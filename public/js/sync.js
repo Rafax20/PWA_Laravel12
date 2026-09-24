@@ -83,45 +83,43 @@ class SyncManager {
     try {
       this.onLog('Laravel API', 'Consultando GET /api/products, GET /api/presupuestos y GET /api/clients para sincronizar el estado oficial...');
 
-      // 1. Descargar Productos
-      try {
-        const prodRes = await fetch('/api/products', {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (prodRes.ok) {
-          const prodData = await prodRes.json();
+      // Consultar en paralelo las 3 APIs para máxima velocidad de respuesta:
+      const [prodFetch, clientFetch, presFetch] = await Promise.allSettled([
+        fetch('/api/products', { headers: { 'Accept': 'application/json' } }),
+        fetch('/api/clients', { headers: { 'Accept': 'application/json' } }),
+        fetch('/api/presupuestos', { headers: { 'Accept': 'application/json' } })
+      ]);
+
+      // 1. Procesar Productos
+      if (prodFetch.status === 'fulfilled' && prodFetch.value.ok) {
+        try {
+          const prodData = await prodFetch.value.json();
           if (prodData.products && Array.isArray(prodData.products)) {
             await this.db.saveProducts(prodData.products);
             this.onLog('IndexedDB', `✓ Copia local de catálogo actualizada: ${prodData.products.length} productos sincronizados con Laravel.`);
           }
+        } catch (errProd) {
+          console.warn('[SyncManager] Error al parsear productos:', errProd);
         }
-      } catch (errProd) {
-        console.warn('[SyncManager] Error al sincronizar productos del servidor:', errProd);
       }
 
-      // 2. Descargar Directorio de Clientes
-      try {
-        const clientRes = await fetch('/api/clients', {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (clientRes.ok) {
-          const clientData = await clientRes.json();
+      // 2. Procesar Directorio de Clientes
+      if (clientFetch.status === 'fulfilled' && clientFetch.value.ok) {
+        try {
+          const clientData = await clientFetch.value.json();
           if (clientData.clients && Array.isArray(clientData.clients)) {
             await this.db.saveClients(clientData.clients);
             this.onLog('IndexedDB', `✓ Directorio de clientes actualizado: ${clientData.clients.length} clientes sincronizados con Laravel.`);
           }
+        } catch (errClient) {
+          console.warn('[SyncManager] Error al parsear clientes:', errClient);
         }
-      } catch (errClient) {
-        console.warn('[SyncManager] Error al sincronizar clientes del servidor:', errClient);
       }
 
-      // 3. Descargar Presupuestos oficiales del servidor
-      try {
-        const presRes = await fetch('/api/presupuestos', {
-          headers: { 'Accept': 'application/json' }
-        });
-        if (presRes.ok) {
-          const presData = await presRes.json();
+      // 3. Procesar Presupuestos oficiales del servidor
+      if (presFetch.status === 'fulfilled' && presFetch.value.ok) {
+        try {
+          const presData = await presFetch.value.json();
           if (presData.presupuestos && Array.isArray(presData.presupuestos)) {
             const localBudgets = await this.db.getAllPresupuestos();
             let newSyncedCount = 0;
@@ -172,9 +170,9 @@ class SyncManager {
               this.onLog('IndexedDB', `✓ Presupuestos sincronizados con Laravel: ${newSyncedCount} nuevo(s) descargados, ${updatedCount} actualizados.`);
             }
           }
+        } catch (errPres) {
+          console.warn('[SyncManager] Error al sincronizar presupuestos del servidor:', errPres);
         }
-      } catch (errPres) {
-        console.warn('[SyncManager] Error al sincronizar presupuestos del servidor:', errPres);
       }
 
       return {

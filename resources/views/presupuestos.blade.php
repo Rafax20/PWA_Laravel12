@@ -113,8 +113,8 @@
   </div>
 
   <!-- Scripts Vanilla JS (Sin frameworks) -->
-  <script src="/js/db.js?v=7"></script>
-  <script src="/js/sync.js?v=7"></script>
+  <script src="/js/db.js?v=8"></script>
+  <script src="/js/sync.js?v=8"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -350,10 +350,17 @@
         });
       }
 
-      // Carga inicial
+      // Carga inicial (Offline-First):
       refreshStatus();
-      await sync.pull();
+      // 1. Mostrar de inmediato los presupuestos guardados en IndexedDB
       await renderBudgets();
+
+      // 2. Traer en segundo plano cualquier novedad del servidor sin congelar la pantalla
+      if (sync.isOnline()) {
+        sync.pull().then(async () => {
+          await renderBudgets();
+        });
+      }
     });
   </script>
 </body>

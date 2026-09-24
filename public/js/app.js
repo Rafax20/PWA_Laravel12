@@ -611,8 +611,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     elLogsFeed.innerHTML = '';
   });
 
-  // Carga inicial:
+  // Carga inicial (Offline-First):
   logActivity('IndexedDB', `Iniciando PWA para DISPOSITIVO: ${clientId}. Base de datos local: pwa_demo_device_${clientId}`);
-  await sync.pull();
+  
+  // 1. Renderizado INMEDIATO desde IndexedDB (cero espera de red, sin pantalla vacía):
   await refreshUI();
+
+  // 2. Sincronización en segundo plano con Laravel si hay conexión activa:
+  if (sync.isOnline()) {
+    sync.pull().then(async () => {
+      await refreshUI();
+    });
+  }
 });

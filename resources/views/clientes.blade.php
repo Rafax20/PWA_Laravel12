@@ -152,8 +152,8 @@
 
   </div>
 
-  <script src="/js/db.js?v=7"></script>
-  <script src="/js/sync.js?v=7"></script>
+  <script src="/js/db.js?v=8"></script>
+  <script src="/js/sync.js?v=8"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -295,8 +295,17 @@
         elLogsFeed.innerHTML = '';
       });
 
+      // Carga inicial (Offline-First):
       refreshStatus();
-      await loadClientsFromServer();
+      // 1. Mostrar inmediatamente los clientes guardados en IndexedDB:
+      await renderClients();
+
+      // 2. Traer novedades del servidor en segundo plano si está online:
+      if (sync.isOnline()) {
+        sync.pull().then(async () => {
+          await renderClients();
+        });
+      }
     });
   </script>
 </body>

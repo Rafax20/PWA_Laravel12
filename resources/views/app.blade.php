@@ -227,8 +227,8 @@
   </div>
 
   <!-- Scripts Vanilla JS (Sin frameworks) -->
-  <script src="/js/db.js?v=7"></script>
-  <script src="/js/sync.js?v=7"></script>
-  <script src="/js/app.js?v=7"></script>
+  <script src="/js/db.js?v=8"></script>
+  <script src="/js/sync.js?v=8"></script>
+  <script src="/js/app.js?v=8"></script>
 </body>
 </html>

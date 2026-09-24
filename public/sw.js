@@ -1,4 +1,4 @@
-const CACHE_NAME = 'presupuestos-pwa-v7';
+const CACHE_NAME = 'presupuestos-pwa-v8';
 
 // Lista de rutas y recursos que se descargarán para estar 100% disponibles OFFLINE:
 // NOTA CLAVE: La ruta '/reportes-servidor' NO ESTÁ EN ESTA LISTA A PROPÓSITO.
@@ -10,9 +10,9 @@ const ASSETS_TO_CACHE = [
   '/offline-fallback',
   '/manifest.json',
   '/css/app.css',
-  '/js/db.js?v=7',
-  '/js/sync.js?v=7',
-  '/js/app.js?v=7',
+  '/js/db.js?v=8',
+  '/js/sync.js?v=8',
+  '/js/app.js?v=8',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
@@ -20,7 +20,7 @@ const ASSETS_TO_CACHE = [
 
 // 1. Instalación del Service Worker: Descarga automática de todas las páginas HTML y recursos
 self.addEventListener('install', (event) => {
-  console.log('[ServiceWorker] Instalando versión v7 con pre-cache de múltiples páginas...');
+  console.log('[ServiceWorker] Instalando versión v8 con pre-cache de múltiples páginas...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       console.log('[ServiceWorker] Pre-cacheando páginas HTML del sitio...');

@@ -184,8 +184,8 @@
 
   </div>
 
-  <script src="/js/db.js?v=7"></script>
-  <script src="/js/sync.js?v=7"></script>
+  <script src="/js/db.js?v=8"></script>
+  <script src="/js/sync.js?v=8"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -267,52 +267,55 @@
         refreshStatus();
       });
 
-      // Carga inicial y auto-pull si hay conexión
-      refreshStatus();
-      if (sync.isOnline()) {
-        await sync.pull();
-      }
+      let clients = [];
+      let products = [];
 
-      // 1. Cargar Clientes y Productos desde IndexedDB local
-      let clients = await localDb.getAllClients();
-      if (clients.length === 0) {
-        // Sembrar clientes básicos por defecto en IndexedDB si no existían
-        const initialClients = [
-          { id: 1, rif: 'J-12345678-0', name: 'Inversiones El Sol C.A.', phone: '0414-1112233', address: 'Av. Principal #45' },
-          { id: 2, rif: 'J-87654321-9', name: 'Agropecuaria Central S.A.', phone: '0424-5556677', address: 'Calle Comercio #12' },
-          { id: 3, rif: 'V-18999888-1', name: 'Distribuidora Juan Pérez', phone: '0412-9998877', address: 'C.C. Las Américas' }
-        ];
-        await localDb.saveClients(initialClients);
-        clients = initialClients;
-      }
+      async function loadClientsAndProducts() {
+        clients = await localDb.getAllClients();
+        if (clients.length === 0) {
+          const initialClients = [
+            { id: 1, rif: 'J-12345678-0', name: 'Inversiones El Sol C.A.', phone: '0414-1112233', address: 'Av. Principal #45' },
+            { id: 2, rif: 'J-87654321-9', name: 'Agropecuaria Central S.A.', phone: '0424-5556677', address: 'Calle Comercio #12' },
+            { id: 3, rif: 'V-18999888-1', name: 'Distribuidora Juan Pérez', phone: '0412-9998877', address: 'C.C. Las Américas' }
+          ];
+          await localDb.saveClients(initialClients);
+          clients = initialClients;
+        }
 
-      const selectClient = document.getElementById('select-client');
-      clients.forEach(c => {
-        const opt = document.createElement('option');
-        opt.value = c.id;
-        opt.textContent = `${c.name} (${c.rif})`;
-        selectClient.appendChild(opt);
-      });
+        const selectClient = document.getElementById('select-client');
+        const prevClientVal = selectClient.value;
+        selectClient.innerHTML = '<option value="">-- Seleccionar Cliente --</option>';
+        clients.forEach(c => {
+          const opt = document.createElement('option');
+          opt.value = c.id;
+          opt.textContent = `${c.name} (${c.rif})`;
+          if (c.id == prevClientVal) opt.selected = true;
+          selectClient.appendChild(opt);
+        });
 
-      let products = await localDb.getAllProducts();
-      if (products.length === 0) {
-        // Fallback básico si aún no se había sincronizado la home
-        products = [
-          { id: 1, name: 'Producto A', price: 100, version: 1 },
-          { id: 2, name: 'Producto B', price: 200, version: 1 },
-          { id: 3, name: 'Producto C', price: 300, version: 1 }
-        ];
-        await localDb.saveProducts(products);
+        products = await localDb.getAllProducts();
+        if (products.length === 0) {
+          products = [
+            { id: 1, name: 'Producto A', price: 100, version: 1 },
+            { id: 2, name: 'Producto B', price: 200, version: 1 },
+            { id: 3, name: 'Producto C', price: 300, version: 1 }
+          ];
+          await localDb.saveProducts(products);
+        }
+
+        const selectProduct = document.getElementById('select-product');
+        const prevProdVal = selectProduct.value;
+        selectProduct.innerHTML = '<option value="">-- Seleccionar Producto --</option>';
+        products.forEach(p => {
+          const opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = `${p.name} - $${Number(p.price).toFixed(2)}`;
+          if (p.id == prevProdVal) opt.selected = true;
+          selectProduct.appendChild(opt);
+        });
       }
 
       const selectProduct = document.getElementById('select-product');
-      products.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.name} - $${Number(p.price).toFixed(2)}`;
-        selectProduct.appendChild(opt);
-      });
-
       selectProduct.addEventListener('change', () => {
         const prod = products.find(p => p.id == selectProduct.value);
         document.getElementById('input-price').value = prod ? prod.price : '';
@@ -515,8 +518,19 @@
         });
       }
 
+      // Carga inicial (Offline-First):
       refreshStatus();
+      // 1. Cargar de inmediato desde IndexedDB (sin congelar la pantalla ni esperar a la red):
+      await loadClientsAndProducts();
       await renderSavedBudgets();
+
+      // 2. Traer novedades de Laravel en segundo plano si está online:
+      if (sync.isOnline()) {
+        sync.pull().then(async () => {
+          await loadClientsAndProducts();
+          await renderSavedBudgets();
+        });
+      }
     });
   </script>
 </body>
