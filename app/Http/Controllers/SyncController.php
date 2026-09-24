@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\ProcessedOperation;
+use App\Models\Presupuesto;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 
@@ -41,6 +42,19 @@ class SyncController extends Controller
     }
 
     /**
+     * Devuelve los presupuestos oficiales sincronizados en el servidor.
+     */
+    public function getPresupuestos(): JsonResponse
+    {
+        $presupuestos = Presupuesto::orderBy('id', 'desc')->get();
+        return response()->json([
+            'success' => true,
+            'presupuestos' => $presupuestos,
+            'server_time' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
      * Recibe una o varias operaciones pendientes desde los clientes (Dispositivos).
      * Ejecuta validaciones de idempotencia, concurrencia/versión y aplica cambios.
      */
@@ -66,17 +80,93 @@ class SyncController extends Controller
         foreach ($operations as $op) {
             $operationId = $op['operation_id'] ?? null;
             $clientId = $op['client_id'] ?? 'unknown';
+            $entity = $op['entity'] ?? 'products';
+            $operationType = $op['operation_type'] ?? 'update';
             $recordId = $op['record_id'] ?? null;
             $payload = $op['payload'] ?? [];
             $baseVersion = isset($op['base_version']) ? (int)$op['base_version'] : 1;
             $force = isset($op['force']) ? (bool)$op['force'] : false;
 
-            if (!$operationId || !$recordId) {
+            if (!$operationId) {
                 $results[] = [
                     'operation_id' => $operationId,
                     'client_id' => $clientId,
                     'status' => 'ERROR',
-                    'message' => 'Faltan parámetros obligatorios (operation_id o record_id).',
+                    'message' => 'Falta el parámetro obligatorio operation_id.',
+                ];
+                continue;
+            }
+
+            // ==========================================
+            // CASO A: OPERACIÓN SOBRE PRESUPUESTOS (CREACIÓN / SYNC)
+            // ==========================================
+            if ($entity === 'presupuestos' || $operationType === 'create_budget') {
+                // 1. REGLA DE IDEMPOTENCIA:
+                $alreadyProcessed = ProcessedOperation::where('operation_id', $operationId)->first();
+                if ($alreadyProcessed) {
+                    $existing = Presupuesto::where('temp_correlativo', $payload['correlativo'] ?? '')
+                        ->orWhere('correlativo', $payload['correlativo'] ?? '')
+                        ->first();
+
+                    $results[] = [
+                        'operation_id' => $operationId,
+                        'client_id' => $clientId,
+                        'entity' => 'presupuestos',
+                        'status' => 'ALREADY_PROCESSED',
+                        'message' => 'Idempotencia: El presupuesto ya fue sincronizado anteriormente. No se vuelve a duplicar en el servidor.',
+                        'presupuesto' => $existing,
+                        'official_correlativo' => $existing ? $existing->correlativo : null,
+                        'temp_correlativo' => $payload['correlativo'] ?? null,
+                    ];
+                    continue;
+                }
+
+                // 2. ASIGNACIÓN OFICIAL Y ATÓMICA DEL CORRELATIVO EN LARAVEL
+                $lastId = Presupuesto::max('id') ?? 0;
+                $nextCorrelativo = 'PRE-' . str_pad($lastId + 1001, 7, '0', STR_PAD_LEFT);
+
+                $nuevoPresupuesto = Presupuesto::create([
+                    'correlativo' => $nextCorrelativo,
+                    'temp_correlativo' => $payload['correlativo'] ?? 'TEMP-' . $clientId,
+                    'client_id' => (string)($payload['client_id'] ?? '1'),
+                    'client_name' => $payload['client_name'] ?? 'Cliente General',
+                    'subtotal' => (float)($payload['subtotal'] ?? 0),
+                    'tax' => (float)($payload['tax'] ?? 0),
+                    'total' => (float)($payload['total'] ?? 0),
+                    'items' => $payload['items'] ?? [],
+                    'version' => 1,
+                    'status' => 'sincronizado',
+                ]);
+
+                // 3. REGISTRAR OPERACIÓN PROCESADA (Idempotencia)
+                ProcessedOperation::create([
+                    'operation_id' => $operationId,
+                    'client_id' => $clientId,
+                    'processed_at' => now(),
+                ]);
+
+                $results[] = [
+                    'operation_id' => $operationId,
+                    'client_id' => $clientId,
+                    'entity' => 'presupuestos',
+                    'status' => 'SUCCESS',
+                    'message' => "Presupuesto sincronizado con éxito. Correlativo provisional {$payload['correlativo']} reemplazado por correlativo oficial {$nextCorrelativo}.",
+                    'presupuesto' => $nuevoPresupuesto,
+                    'official_correlativo' => $nextCorrelativo,
+                    'temp_correlativo' => $payload['correlativo'] ?? null,
+                ];
+                continue;
+            }
+
+            // ==========================================
+            // CASO B: OPERACIÓN SOBRE PRODUCTOS (ACTUALIZACIÓN / CONFLICTO)
+            // ==========================================
+            if (!$recordId) {
+                $results[] = [
+                    'operation_id' => $operationId,
+                    'client_id' => $clientId,
+                    'status' => 'ERROR',
+                    'message' => 'Faltan parámetros obligatorios (record_id).',
                 ];
                 continue;
             }
@@ -89,6 +179,7 @@ class SyncController extends Controller
                 $results[] = [
                     'operation_id' => $operationId,
                     'client_id' => $clientId,
+                    'entity' => 'products',
                     'status' => 'ALREADY_PROCESSED',
                     'message' => 'Idempotencia: La operación ya fue procesada anteriormente el ' . $alreadyProcessed->processed_at->format('Y-m-d H:i:s') . '. No se vuelve a aplicar.',
                     'product' => $currentProduct,
@@ -192,6 +283,7 @@ class SyncController extends Controller
     {
         ProcessedOperation::truncate();
         Product::truncate();
+        Presupuesto::truncate();
 
         Product::create(['id' => 1, 'name' => 'Producto A', 'price' => 100.00, 'version' => 1]);
         Product::create(['id' => 2, 'name' => 'Producto B', 'price' => 200.00, 'version' => 1]);

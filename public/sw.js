@@ -1,4 +1,4 @@
-const CACHE_NAME = 'presupuestos-pwa-v3';
+const CACHE_NAME = 'presupuestos-pwa-v5';
 
 // Lista de rutas y recursos que se descargarán para estar 100% disponibles OFFLINE:
 // NOTA CLAVE: La ruta '/reportes-servidor' NO ESTÁ EN ESTA LISTA A PROPÓSITO.
@@ -9,9 +9,9 @@ const ASSETS_TO_CACHE = [
   '/offline-fallback',
   '/manifest.json',
   '/css/app.css',
-  '/js/db.js?v=4',
-  '/js/sync.js?v=4',
-  '/js/app.js?v=4',
+  '/js/db.js?v=5',
+  '/js/sync.js?v=5',
+  '/js/app.js?v=5',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
@@ -75,7 +75,7 @@ self.addEventListener('fetch', (event) => {
           console.log('[ServiceWorker] Modo Offline: Interceptando navegación a:', url.pathname);
 
           // 1. Si la página solicitada está en caché (ej: '/', '/clientes', '/presupuestos/crear'), la entregamos de inmediato:
-          const cachedPage = await caches.match(event.request);
+          const cachedPage = await caches.match(event.request, { ignoreSearch: true });
           if (cachedPage) {
             return cachedPage;
           }

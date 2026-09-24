@@ -74,6 +74,9 @@
       <button id="btn-toggle-offline" class="btn btn-secondary">
         ACTIVAR OFFLINE
       </button>
+      <button id="btn-sync-now" class="btn btn-primary">
+        🔄 Sincronizar con Laravel
+      </button>
       <span style="font-size: 0.85rem; color: var(--text-muted); align-self: center;">
         💡 Puedes desconectar internet y el presupuesto se calculará y guardará en IndexedDB con un correlativo provisional.
       </span>
@@ -178,12 +181,17 @@
 
   </div>
 
-  <script src="/js/db.js?v=4"></script>
-  <script src="/js/sync.js?v=4"></script>
+  <script src="/js/db.js?v=5"></script>
+  <script src="/js/sync.js?v=5"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const clientId = (urlParams.get('device') || 'A').toUpperCase();
+      let clientId = urlParams.get('device');
+      if (!clientId) {
+        clientId = localStorage.getItem('pwa_current_device') || 'A';
+      }
+      clientId = clientId.toUpperCase();
+      localStorage.setItem('pwa_current_device', clientId);
 
       document.getElementById('current-device').textContent = clientId;
       const linkA = document.getElementById('link-device-a');
@@ -196,15 +204,33 @@
         linkB.classList.remove('active');
       }
 
+      // Mantener dispositivo en la navegación interna
+      document.querySelectorAll('a.nav-tab, a.device-link').forEach(link => {
+        const url = new URL(link.href, window.location.origin);
+        if (link.id === 'link-device-a') {
+          url.searchParams.set('device', 'A');
+        } else if (link.id === 'link-device-b') {
+          url.searchParams.set('device', 'B');
+        } else {
+          url.searchParams.set('device', clientId);
+        }
+        link.href = url.pathname + url.search;
+      });
+
       document.getElementById('budget-date').value = new Date().toLocaleDateString();
 
       const localDb = new LocalDatabase(clientId);
       await localDb.init();
 
-      const sync = new SyncManager(localDb, refreshStatus);
+      const sync = new SyncManager(localDb, async () => {
+        refreshStatus();
+        await renderSavedBudgets();
+      });
 
       const elConn = document.getElementById('connection-badge');
       const elBtnToggle = document.getElementById('btn-toggle-offline');
+      const elBtnSyncNow = document.getElementById('btn-sync-now');
+
       function refreshStatus() {
         if (sync.isOnline()) {
           elConn.className = 'status-badge status-online';
@@ -219,8 +245,22 @@
         }
       }
 
-      elBtnToggle.addEventListener('click', () => {
-        sync.toggleOfflineSimulation();
+      elBtnToggle.addEventListener('click', async () => {
+        await sync.toggleOfflineSimulation();
+        refreshStatus();
+      });
+
+      elBtnSyncNow.addEventListener('click', async () => {
+        if (!sync.isOnline()) {
+          if (confirm('El dispositivo está en modo OFFLINE simulado. ¿Deseas activar la conexión para sincronizar ahora?')) {
+            await sync.toggleOfflineSimulation();
+          } else {
+            return;
+          }
+        }
+        await sync.push();
+        await sync.pull();
+        await renderSavedBudgets();
         refreshStatus();
       });
 
@@ -407,22 +447,62 @@
         }
 
         list.forEach(b => {
+          const isSynced = b.status === 'sincronizado';
           const item = document.createElement('div');
-          item.style = 'background: #0f172a; padding: 12px; border-radius: 6px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;';
+          item.className = 'queue-item-card';
+          item.style = 'background: #0f172a; padding: 12px; border-radius: 6px; border: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 8px;';
           item.innerHTML = `
-            <div>
-              <span class="badge badge-amber">${b.correlativo}</span>
+            <div style="flex: 1; min-width: 240px;">
+              <span class="badge ${isSynced ? 'badge-green' : 'badge-amber'}">${b.correlativo}</span>
               <strong style="margin-left: 8px; color: #fff;">${b.client_name}</strong>
               <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
-                ${b.items.length} productos | Fecha: ${new Date(b.created_at).toLocaleTimeString()}
+                ${b.items.length} productos | Creado: ${new Date(b.created_at).toLocaleTimeString()}
               </div>
             </div>
-            <div style="text-align: right;">
-              <span style="font-size: 1.1rem; font-weight: 700; color: #10b981;">$${b.total.toFixed(2)}</span>
-              <div style="font-size: 0.75rem; color: #fbbf24;">Pendiente sincronización</div>
+            <div style="display: flex; align-items: center; gap: 12px; text-align: right;">
+              <div>
+                <span style="font-size: 1.15rem; font-weight: 700; color: #10b981;">$${Number(b.total).toFixed(2)}</span>
+                <div style="font-size: 0.75rem; color: ${isSynced ? '#4ade80' : '#fbbf24'}; font-weight: 600;">
+                  ${isSynced ? '✓ Sincronizado en Laravel' : '⏳ Pendiente de sincronización'}
+                </div>
+              </div>
+              <div>
+                ${isSynced ? `
+                  <button class="btn btn-sm btn-secondary btn-test-budget-idempotency" data-id="${b.local_id}" title="Reenviar para probar idempotencia">
+                    Probar Idempotencia
+                  </button>
+                ` : `
+                  <button class="btn btn-sm btn-primary btn-sync-single" data-id="${b.local_id}">
+                    Sincronizar
+                  </button>
+                `}
+              </div>
             </div>
           `;
           container.appendChild(item);
+        });
+
+        container.querySelectorAll('.btn-test-budget-idempotency').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            const id = btn.getAttribute('data-id');
+            const b = list.find(x => x.local_id === id);
+            if (b) {
+              await sync.testIdempotency(b.local_id, b.local_id, b, 'presupuestos');
+            }
+          });
+        });
+
+        container.querySelectorAll('.btn-sync-single').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            if (!sync.isOnline()) {
+              alert('El dispositivo está en modo OFFLINE. Active la conexión para sincronizar.');
+              return;
+            }
+            await sync.push();
+            await sync.pull();
+            await renderSavedBudgets();
+            refreshStatus();
+          });
         });
       }
 

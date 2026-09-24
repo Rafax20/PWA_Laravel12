@@ -118,6 +118,17 @@
       </div>
     </main>
 
+    <!-- Sección de Presupuestos Locales & Sincronización -->
+    <section style="margin-bottom: 28px;">
+      <div class="section-title">
+        <span>Presupuestos Registrados en este Dispositivo</span>
+        <a href="/presupuestos/crear" class="btn btn-sm btn-primary nav-tab">+ Crear Nuevo Presupuesto</a>
+      </div>
+      <div id="dashboard-budgets-list" style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Renderizado dinámico desde IndexedDB por app.js -->
+      </div>
+    </section>
+
     <!-- Sección Educativa en Tiempo Real: "¿Qué está ocurriendo?" -->
     <section class="explanation-panel">
       <div class="panel-header">
@@ -197,8 +208,8 @@
   </div>
 
   <!-- Scripts Vanilla JS (Sin frameworks) -->
-  <script src="/js/db.js?v=4"></script>
-  <script src="/js/sync.js?v=4"></script>
-  <script src="/js/app.js?v=4"></script>
+  <script src="/js/db.js?v=5"></script>
+  <script src="/js/sync.js?v=5"></script>
+  <script src="/js/app.js?v=5"></script>
 </body>
 </html>

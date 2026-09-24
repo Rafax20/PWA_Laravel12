@@ -3,9 +3,29 @@
  */
 
 document.addEventListener('DOMContentLoaded', async () => {
-  // 1. Obtener el identificador del dispositivo desde el parámetro de URL (?device=A o ?device=B)
+  // 1. Obtener el identificador del dispositivo (A o B) y persistirlo
   const urlParams = new URLSearchParams(window.location.search);
-  const clientId = (urlParams.get('device') || 'A').toUpperCase();
+  let clientId = urlParams.get('device');
+  if (!clientId) {
+    clientId = localStorage.getItem('pwa_current_device') || 'A';
+  }
+  clientId = clientId.toUpperCase();
+  localStorage.setItem('pwa_current_device', clientId);
+
+  // Asegurar que todos los enlaces de navegación y cambio de dispositivo mantengan ?device=
+  document.querySelectorAll('a.nav-tab, a.device-link').forEach(link => {
+    const url = new URL(link.href, window.location.origin);
+    if (link.id === 'link-device-a') {
+      url.searchParams.set('device', 'A');
+    } else if (link.id === 'link-device-b') {
+      url.searchParams.set('device', 'B');
+    } else if (link.id === 'link-device-new') {
+      url.searchParams.set('device', clientId === 'A' ? 'B' : 'A');
+    } else {
+      url.searchParams.set('device', clientId);
+    }
+    link.href = url.pathname + url.search;
+  });
 
   // 2. Elementos del DOM
   const elCurrentDevice = document.getElementById('current-device');
@@ -18,6 +38,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const elBtnViewConflicts = document.getElementById('btn-view-conflicts');
   const elBtnResetDemo = document.getElementById('btn-reset-demo');
   const elProductList = document.getElementById('product-list');
+  const elDashboardBudgetsList = document.getElementById('dashboard-budgets-list');
   const elLogsFeed = document.getElementById('logs-feed');
   const elBtnClearLogs = document.getElementById('btn-clear-logs');
 
@@ -115,7 +136,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     elLogsFeed.prepend(entry);
 
-    // Mantener un máximo de 50 entradas para no saturar el DOM
     while (elLogsFeed.children.length > 50) {
       elLogsFeed.removeChild(elLogsFeed.lastChild);
     }
@@ -200,7 +220,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     const products = await localDb.getAllProducts();
     renderProducts(products);
 
-    // F. Si hay conflictos y el modal no está abierto, podemos abrirlo o invitar a abrirlo
+    // F. Lista de presupuestos guardados en este dispositivo
+    await renderBudgets();
+
+    // G. Si hay conflictos y el modal está abierto, refrescarlo
     if (conflictCount > 0 && elModalConflict.classList.contains('active')) {
       renderConflictModal(conflicts);
     }
@@ -237,7 +260,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Asignar eventos de edición
     document.querySelectorAll('.btn-edit-product').forEach((btn) => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', () => {
         const id = btn.getAttribute('data-id');
         const name = btn.getAttribute('data-name');
         const price = btn.getAttribute('data-price');
@@ -250,6 +273,85 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.getElementById('modal-edit-version-label').textContent = version;
 
         elModalEdit.classList.add('active');
+      });
+    });
+  }
+
+  // 8.1 Renderizado de Presupuestos Locales en el Dashboard
+  async function renderBudgets() {
+    if (!elDashboardBudgetsList) return;
+
+    const budgets = await localDb.getAllPresupuestos();
+    elDashboardBudgetsList.innerHTML = '';
+
+    if (budgets.length === 0) {
+      elDashboardBudgetsList.innerHTML = `
+        <div class="empty-state" style="padding: 16px; font-size: 0.9rem;">
+          No hay presupuestos registrados en este dispositivo todavía. Puedes generar presupuestos con correlativo provisional en modo offline pulsando en <strong>"+ Crear Nuevo Presupuesto"</strong>.
+        </div>
+      `;
+      return;
+    }
+
+    budgets.forEach((b) => {
+      const isSynced = b.status === 'sincronizado';
+      const item = document.createElement('div');
+      item.className = 'queue-item-card';
+      item.style = 'display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px;';
+      item.innerHTML = `
+        <div style="flex: 1; min-width: 240px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="badge ${isSynced ? 'badge-green' : 'badge-amber'}">${b.correlativo}</span>
+            <strong style="color: #fff; font-size: 0.95rem;">${b.client_name}</strong>
+          </div>
+          <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+            ${(b.items || []).length} productos en lista | Creado: ${new Date(b.created_at || Date.now()).toLocaleTimeString()}
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 14px; text-align: right; flex-wrap: wrap;">
+          <div>
+            <div style="font-size: 1.2rem; font-weight: 700; color: #10b981;">$${Number(b.total).toFixed(2)}</div>
+            <div style="font-size: 0.75rem; color: ${isSynced ? '#4ade80' : '#fbbf24'}; font-weight: 600;">
+              ${isSynced ? '✓ Sincronizado en Laravel' : '⏳ Pendiente en sync_queue'}
+            </div>
+          </div>
+          <div>
+            ${isSynced ? `
+              <button class="btn btn-sm btn-secondary btn-test-budget-idempotency" data-id="${b.local_id}" title="Reenvía el presupuesto para comprobar que Laravel no lo duplica">
+                Probar Idempotencia
+              </button>
+            ` : `
+              <button class="btn btn-sm btn-primary btn-sync-budget-inline" title="Sincronizar este presupuesto pendiente con Laravel">
+                Sincronizar Ahora
+              </button>
+            `}
+          </div>
+        </div>
+      `;
+      elDashboardBudgetsList.appendChild(item);
+    });
+
+    // Botones para probar idempotencia
+    elDashboardBudgetsList.querySelectorAll('.btn-test-budget-idempotency').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.getAttribute('data-id');
+        const b = budgets.find(x => x.local_id === id);
+        if (b) {
+          await sync.testIdempotency(b.local_id, b.local_id, b, 'presupuestos');
+        }
+      });
+    });
+
+    // Botones para sincronizar de inmediato
+    elDashboardBudgetsList.querySelectorAll('.btn-sync-budget-inline').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        if (!sync.isOnline()) {
+          alert('El dispositivo está en modo OFFLINE. Active la conexión para enviar los presupuestos pendientes.');
+          return;
+        }
+        await sync.push();
+        await sync.pull();
+        await refreshUI();
       });
     });
   }
@@ -272,7 +374,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       id: id,
       name: name,
       price: price,
-      version: baseVersion // Mantiene base_version local hasta que Laravel confirme
+      version: baseVersion
     });
 
     // 3. Encolamos la operación en sync_queue
@@ -311,15 +413,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 10. Botones de control
   elBtnToggleOffline.addEventListener('click', async () => {
-    sync.toggleOfflineSimulation();
+    await sync.toggleOfflineSimulation();
     await refreshUI();
   });
 
   elBtnSyncNow.addEventListener('click', async () => {
-    // Si estaba en modo offline simulado, lo desactivamos automáticamente para permitir la sincronización
     if (sync.simulatedOffline) {
-      sync.simulatedOffline = false;
-      logActivity('Simulación', 'Modo offline desactivado automáticamente al solicitar sincronización.');
+      await sync.toggleOfflineSimulation();
     }
     logActivity('Sincronización', 'Sincronización manual solicitada con el servidor Laravel...');
     await refreshUI();
@@ -328,15 +428,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     await refreshUI();
   });
 
-  // Modal Cola Local
+  // Modal Cola Local (sync_queue) con soporte completo para Presupuestos y Productos
   elBtnViewQueue.addEventListener('click', async () => {
     const queue = await localDb.getQueue();
     elQueueContent.innerHTML = '';
 
     if (queue.length === 0) {
-      elQueueContent.innerHTML = '<div class="empty-state">La cola local de sincronización está vacía.</div>';
+      elQueueContent.innerHTML = '<div class="empty-state">La cola local de sincronización está vacía. Todos los cambios están al día con Laravel.</div>';
     } else {
       queue.forEach((op) => {
+        const isBudget = op.entity === 'presupuestos' || op.operation_type === 'create_budget';
         const item = document.createElement('div');
         item.className = 'queue-item-card';
         item.innerHTML = `
@@ -345,14 +446,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             <span class="badge ${op.status === 'conflict' ? 'badge-red' : 'badge-orange'}">${op.status.toUpperCase()}</span>
           </div>
           <div class="queue-item-details">
-            <p><strong>Dispositivo:</strong> ${op.client_id}</p>
-            <p><strong>Producto ID:</strong> ${op.record_id}</p>
-            <p><strong>Versión Base enviada:</strong> ${op.base_version}</p>
-            <p><strong>Payload:</strong> ${JSON.stringify(op.payload)}</p>
+            <p><strong>Tipo:</strong> ${isBudget ? '📝 Presupuesto (Creación)' : '📦 Producto (Actualización)'}</p>
+            <p><strong>Dispositivo emisor:</strong> ${op.client_id}</p>
+            <p><strong>${isBudget ? 'Correlativo Temp:' : 'Producto ID:'}</strong> ${isBudget ? (op.payload.correlativo || op.record_id) : op.record_id}</p>
+            ${isBudget ? `
+              <p><strong>Cliente:</strong> ${op.payload.client_name || 'N/A'}</p>
+              <p><strong>Total calculado:</strong> $${Number(op.payload.total || 0).toFixed(2)}</p>
+            ` : `
+              <p><strong>Versión Base enviada:</strong> ${op.base_version}</p>
+              <p><strong>Nuevo Precio propuesto:</strong> $${Number(op.payload.price || 0).toFixed(2)}</p>
+            `}
             <p><strong>Fecha encolado:</strong> ${new Date(op.created_at).toLocaleString()}</p>
+            <p><strong>Payload inspección:</strong></p>
+            <div class="payload-preview">${JSON.stringify(op.payload, null, 2)}</div>
           </div>
-          <div style="margin-top: 8px;">
-            <button class="btn btn-sm btn-secondary btn-test-idempotency" data-opid="${op.operation_id}" data-recid="${op.record_id}" data-name="${op.payload.name}" data-price="${op.payload.price}">
+          <div style="margin-top: 10px;">
+            <button class="btn btn-sm btn-secondary btn-test-idempotency" data-opid="${op.operation_id}" data-recid="${op.record_id}" data-entity="${op.entity || (isBudget ? 'presupuestos' : 'products')}" data-payload='${JSON.stringify(op.payload).replace(/'/g, "&apos;")}'>
               Probar Idempotencia (Reenviar)
             </button>
           </div>
@@ -365,11 +474,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         btn.addEventListener('click', async () => {
           const opId = btn.getAttribute('data-opid');
           const recId = btn.getAttribute('data-recid');
-          const payload = {
-            name: btn.getAttribute('data-name'),
-            price: parseFloat(btn.getAttribute('data-price'))
-          };
-          await sync.testIdempotency(opId, recId, payload);
+          const entity = btn.getAttribute('data-entity') || 'products';
+          let payload = {};
+          try {
+            payload = JSON.parse(btn.getAttribute('data-payload'));
+          } catch(e) {
+            console.error('Error parseando payload para idempotencia', e);
+          }
+          await sync.testIdempotency(opId, recId, payload, entity);
         });
       });
     }
@@ -453,11 +565,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       const data = await res.json();
 
       await localDb.clearLocalData();
+      localStorage.removeItem(`pwa_simulated_offline_${clientId}`);
+      sync.simulatedOffline = false;
+
       if (data.products) {
         await localDb.saveProducts(data.products);
       }
 
-      logActivity('Sincronización', 'Valores de demostración restaurados: Producto A ($100 v1), Producto B ($200 v1), Producto C ($300 v1).');
+      logActivity('Sincronización', 'Valores de demostración restaurados: Productos A, B, C creados y presupuestos reseteados.');
       await refreshUI();
     } catch (err) {
       logActivity('Error', `Error al reiniciar demo: ${err.message}`);

@@ -149,12 +149,17 @@
 
   </div>
 
-  <script src="/js/db.js?v=4"></script>
-  <script src="/js/sync.js?v=4"></script>
+  <script src="/js/db.js?v=5"></script>
+  <script src="/js/sync.js?v=5"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
-      const clientId = (urlParams.get('device') || 'A').toUpperCase();
+      let clientId = urlParams.get('device');
+      if (!clientId) {
+        clientId = localStorage.getItem('pwa_current_device') || 'A';
+      }
+      clientId = clientId.toUpperCase();
+      localStorage.setItem('pwa_current_device', clientId);
 
       document.getElementById('current-device').textContent = clientId;
       const linkA = document.getElementById('link-device-a');
@@ -167,6 +172,19 @@
         linkB.classList.remove('active');
       }
 
+      // Mantener dispositivo en enlaces internos
+      document.querySelectorAll('a.nav-tab, a.device-link').forEach(link => {
+        const url = new URL(link.href, window.location.origin);
+        if (link.id === 'link-device-a') {
+          url.searchParams.set('device', 'A');
+        } else if (link.id === 'link-device-b') {
+          url.searchParams.set('device', 'B');
+        } else {
+          url.searchParams.set('device', clientId);
+        }
+        link.href = url.pathname + url.search;
+      });
+
       const localDb = new LocalDatabase(clientId);
       await localDb.init();
 
@@ -176,7 +194,7 @@
         const entry = document.createElement('div');
         entry.className = 'log-entry';
         entry.innerHTML = `<div class="log-header"><span class="badge badge-purple">[${cat}]</span> <span class="log-time">${time}</span></div><div class="log-body">${msg}</div>`;
-        elLogsFeed.prepend(entry);
+        if (elLogsFeed) elLogsFeed.prepend(entry);
       }
 
       const sync = new SyncManager(localDb, refreshStatus, logActivity);
@@ -197,8 +215,8 @@
         }
       }
 
-      elBtnToggle.addEventListener('click', () => {
-        sync.toggleOfflineSimulation();
+      elBtnToggle.addEventListener('click', async () => {
+        await sync.toggleOfflineSimulation();
         refreshStatus();
       });
 

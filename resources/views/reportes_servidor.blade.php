@@ -72,5 +72,16 @@
 
   </div>
 
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      let clientId = urlParams.get('device') || localStorage.getItem('pwa_current_device') || 'A';
+      document.querySelectorAll('a.nav-tab').forEach(link => {
+        const url = new URL(link.href, window.location.origin);
+        url.searchParams.set('device', clientId);
+        link.href = url.pathname + url.search;
+      });
+    });
+  </script>
 </body>
 </html>
