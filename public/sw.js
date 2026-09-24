@@ -1,17 +1,18 @@
-const CACHE_NAME = 'presupuestos-pwa-v5';
+const CACHE_NAME = 'presupuestos-pwa-v6';
 
 // Lista de rutas y recursos que se descargarán para estar 100% disponibles OFFLINE:
 // NOTA CLAVE: La ruta '/reportes-servidor' NO ESTÁ EN ESTA LISTA A PROPÓSITO.
 const ASSETS_TO_CACHE = [
   '/',
+  '/presupuestos',
   '/clientes',
   '/presupuestos/crear',
   '/offline-fallback',
   '/manifest.json',
   '/css/app.css',
-  '/js/db.js?v=5',
-  '/js/sync.js?v=5',
-  '/js/app.js?v=5',
+  '/js/db.js?v=6',
+  '/js/sync.js?v=6',
+  '/js/app.js?v=6',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png'

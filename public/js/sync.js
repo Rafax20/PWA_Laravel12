@@ -102,19 +102,47 @@ class SyncManager {
         if (presRes.ok) {
           const presData = await presRes.json();
           if (presData.presupuestos && Array.isArray(presData.presupuestos)) {
-            const localBudgets = await this.db.getAllPresupuestos();
+            let newSyncedCount = 0;
             for (const serverP of presData.presupuestos) {
               const matched = localBudgets.find(b =>
+                (b.server_id && b.server_id === serverP.id) ||
                 b.correlativo === serverP.correlativo ||
-                b.correlativo === serverP.temp_correlativo ||
-                b.local_id === serverP.temp_correlativo
+                (serverP.temp_correlativo && b.correlativo === serverP.temp_correlativo) ||
+                (serverP.temp_correlativo && b.local_id === serverP.temp_correlativo)
               );
               if (matched) {
                 matched.correlativo = serverP.correlativo;
                 matched.status = 'sincronizado';
                 matched.server_id = serverP.id;
+                matched.items = serverP.items || matched.items;
+                matched.subtotal = Number(serverP.subtotal);
+                matched.tax = Number(serverP.tax);
+                matched.total = Number(serverP.total);
+                matched.client_name = serverP.client_name || matched.client_name;
+                matched.version = serverP.version || matched.version || 1;
                 await this.db.savePresupuesto(matched);
+              } else {
+                newSyncedCount++;
+                await this.db.savePresupuesto({
+                  local_id: 'srv_' + serverP.id,
+                  server_id: serverP.id,
+                  correlativo: serverP.correlativo,
+                  temp_correlativo: serverP.temp_correlativo,
+                  client_id: serverP.client_id,
+                  client_name: serverP.client_name,
+                  items: serverP.items || [],
+                  subtotal: Number(serverP.subtotal),
+                  tax: Number(serverP.tax),
+                  total: Number(serverP.total),
+                  version: serverP.version || 1,
+                  status: 'sincronizado',
+                  created_at: serverP.created_at,
+                  synced_at: serverP.updated_at
+                });
               }
+            }
+            if (newSyncedCount > 0) {
+              this.onLog('IndexedDB', `✓ Descargados ${newSyncedCount} nuevo(s) presupuesto(s) del servidor para este dispositivo.`);
             }
           }
         }
@@ -193,28 +221,46 @@ class SyncManager {
           await this.db.removeOperation(res.operation_id);
 
           if (res.entity === 'presupuestos' || res.presupuesto) {
-            // Actualizar presupuesto local en IndexedDB con el nuevo correlativo oficial
+            // Actualizar presupuesto local en IndexedDB con el nuevo correlativo oficial y versión
             const localBudgets = await this.db.getAllPresupuestos();
             const localB = localBudgets.find(b =>
               b.local_id === res.operation_id ||
+              (res.presupuesto && b.server_id === res.presupuesto.id) ||
               b.correlativo === res.temp_correlativo ||
               b.correlativo === res.official_correlativo
             );
 
             if (localB) {
-              localB.correlativo = res.official_correlativo;
+              localB.correlativo = res.official_correlativo || localB.correlativo;
               localB.status = 'sincronizado';
-              localB.server_id = res.presupuesto ? res.presupuesto.id : null;
+              if (res.presupuesto) {
+                localB.server_id = res.presupuesto.id;
+                localB.items = res.presupuesto.items || localB.items;
+                localB.subtotal = Number(res.presupuesto.subtotal);
+                localB.tax = Number(res.presupuesto.tax);
+                localB.total = Number(res.presupuesto.total);
+                localB.version = res.presupuesto.version;
+                localB.client_name = res.presupuesto.client_name;
+              }
               localB.synced_at = new Date().toISOString();
               await this.db.savePresupuesto(localB);
             }
 
-            this.onLog('Laravel API', `✓ Presupuesto sincronizado: Correlativo ${res.temp_correlativo || ''} reemplazado por correlativo oficial ${res.official_correlativo}.`, {
-              operacion_id: res.operation_id,
-              correlativo_oficial: res.official_correlativo,
-              cliente: res.presupuesto ? res.presupuesto.client_name : null,
-              total: res.presupuesto ? `$${Number(res.presupuesto.total).toFixed(2)}` : null
-            });
+            if (res.operation_type === 'update_budget') {
+              this.onLog('Laravel API', `✓ Presupuesto ${res.official_correlativo} editado en Laravel (Nueva versión: ${res.presupuesto ? res.presupuesto.version : 2}, Operation ID: ${res.operation_id.slice(0, 8)}...).`, {
+                operacion_id: res.operation_id,
+                correlativo: res.official_correlativo,
+                version: res.presupuesto ? res.presupuesto.version : 2,
+                total: res.presupuesto ? `$${Number(res.presupuesto.total).toFixed(2)}` : null
+              });
+            } else {
+              this.onLog('Laravel API', `✓ Presupuesto sincronizado: Correlativo ${res.temp_correlativo || ''} reemplazado por correlativo oficial ${res.official_correlativo}.`, {
+                operacion_id: res.operation_id,
+                correlativo_oficial: res.official_correlativo,
+                cliente: res.presupuesto ? res.presupuesto.client_name : null,
+                total: res.presupuesto ? `$${Number(res.presupuesto.total).toFixed(2)}` : null
+              });
+            }
           } else if (res.product) {
             await this.db.updateProduct(res.product);
             this.onLog('Laravel API', `✓ Operación ${res.operation_id.slice(0, 8)}... ACEPTADA por Laravel. Producto ${res.product.name} actualizado a versión ${res.product.version}.`, {

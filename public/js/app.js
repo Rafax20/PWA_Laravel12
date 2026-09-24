@@ -277,14 +277,19 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   }
 
-  // 8.1 Renderizado de Presupuestos Locales en el Dashboard
+  // 8.1 Renderizado de Presupuestos Locales en el Dashboard con técnica FIFO (Últimos 5)
   async function renderBudgets() {
     if (!elDashboardBudgetsList) return;
 
     const budgets = await localDb.getAllPresupuestos();
     elDashboardBudgetsList.innerHTML = '';
 
+    const elFifoCounter = document.getElementById('fifo-counter');
+    const elFifoFooter = document.getElementById('fifo-footer');
+
     if (budgets.length === 0) {
+      if (elFifoCounter) elFifoCounter.textContent = '(0 presupuestos registrados)';
+      if (elFifoFooter) elFifoFooter.style.display = 'none';
       elDashboardBudgetsList.innerHTML = `
         <div class="empty-state" style="padding: 16px; font-size: 0.9rem;">
           No hay presupuestos registrados en este dispositivo todavía. Puedes generar presupuestos con correlativo provisional en modo offline pulsando en <strong>"+ Crear Nuevo Presupuesto"</strong>.
@@ -293,7 +298,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    budgets.forEach((b) => {
+    // Ordenar del más reciente al más antiguo
+    budgets.sort((a, b) => new Date(b.created_at || b.synced_at || 0) - new Date(a.created_at || a.synced_at || 0));
+
+    // Técnica FIFO / Ventana Deslizante (máximo 5 en el dashboard para no desplazar el log feed)
+    const FIFO_LIMIT = 5;
+    const visibleBudgets = budgets.slice(0, FIFO_LIMIT);
+
+    if (elFifoCounter) {
+      elFifoCounter.textContent = budgets.length > FIFO_LIMIT
+        ? `(Buffer FIFO: mostrando los últimos 5 de ${budgets.length} presupuestos)`
+        : `(${budgets.length} presupuesto${budgets.length > 1 ? 's' : ''} en este dispositivo)`;
+    }
+
+    if (elFifoFooter) {
+      elFifoFooter.style.display = budgets.length > FIFO_LIMIT ? 'block' : 'none';
+    }
+
+    visibleBudgets.forEach((b) => {
       const isSynced = b.status === 'sincronizado';
       const item = document.createElement('div');
       item.className = 'queue-item-card';
@@ -302,6 +324,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         <div style="flex: 1; min-width: 240px;">
           <div style="display: flex; align-items: center; gap: 8px;">
             <span class="badge ${isSynced ? 'badge-green' : 'badge-amber'}">${b.correlativo}</span>
+            <span class="version-tag" style="font-size: 0.72rem;">v${b.version || 1}</span>
             <strong style="color: #fff; font-size: 0.95rem;">${b.client_name}</strong>
           </div>
           <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
@@ -315,20 +338,32 @@ document.addEventListener('DOMContentLoaded', async () => {
               ${isSynced ? '✓ Sincronizado en Laravel' : '⏳ Pendiente en sync_queue'}
             </div>
           </div>
-          <div>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <button class="btn btn-sm btn-secondary btn-dashboard-edit-budget" data-id="${b.local_id}">
+              ✏️ Editar
+            </button>
             ${isSynced ? `
-              <button class="btn btn-sm btn-secondary btn-test-budget-idempotency" data-id="${b.local_id}" title="Reenvía el presupuesto para comprobar que Laravel no lo duplica">
+              <button class="btn btn-sm btn-secondary btn-test-budget-idempotency" data-id="${b.local_id}" title="Reenviar el presupuesto para comprobar que Laravel no lo duplica">
                 Probar Idempotencia
               </button>
             ` : `
               <button class="btn btn-sm btn-primary btn-sync-budget-inline" title="Sincronizar este presupuesto pendiente con Laravel">
-                Sincronizar Ahora
+                Sincronizar
               </button>
             `}
           </div>
         </div>
       `;
       elDashboardBudgetsList.appendChild(item);
+    });
+
+    // Eventos: Editar presupuesto desde Dashboard
+    elDashboardBudgetsList.querySelectorAll('.btn-dashboard-edit-budget').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = btn.getAttribute('data-id');
+        const b = budgets.find(x => x.local_id === id);
+        if (b) openEditBudgetModal(b);
+      });
     });
 
     // Botones para probar idempotencia
@@ -353,6 +388,215 @@ document.addEventListener('DOMContentLoaded', async () => {
         await sync.pull();
         await refreshUI();
       });
+    });
+  }
+
+  // 8.2 Modal de Edición de Presupuesto (con generación de nuevo Operation ID para Idempotencia)
+  const modalEditBudget = document.getElementById('modal-edit-budget');
+  const btnCloseEditBudget = document.getElementById('btn-close-edit-budget');
+  const btnCancelEditBudget = document.getElementById('btn-cancel-edit-budget');
+  const btnSaveEditBudget = document.getElementById('btn-save-edit-budget');
+  const selectEditProduct = document.getElementById('edit-select-product');
+  const inputEditPrice = document.getElementById('edit-input-price');
+  const inputEditQty = document.getElementById('edit-input-qty');
+  const btnEditAddItem = document.getElementById('btn-edit-add-item');
+
+  let currentEditingBudget = null;
+  let editingBudgetItems = [];
+  let cachedProducts = [];
+
+  async function initEditBudgetProducts() {
+    if (!selectEditProduct) return;
+    cachedProducts = await localDb.getAllProducts();
+    selectEditProduct.innerHTML = '<option value="">-- Seleccionar Producto --</option>';
+    cachedProducts.forEach(p => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = `${p.name} ($${Number(p.price).toFixed(2)})`;
+      selectEditProduct.appendChild(opt);
+    });
+  }
+
+  if (selectEditProduct) {
+    selectEditProduct.addEventListener('change', () => {
+      const p = cachedProducts.find(x => x.id == selectEditProduct.value);
+      if (inputEditPrice) inputEditPrice.value = p ? p.price : '';
+    });
+  }
+
+  function openEditBudgetModal(budget) {
+    if (!modalEditBudget) return;
+    currentEditingBudget = budget;
+    editingBudgetItems = JSON.parse(JSON.stringify(budget.items || []));
+
+    document.getElementById('edit-budget-correlativo').textContent = budget.correlativo;
+    document.getElementById('edit-budget-client').value = budget.client_name;
+    document.getElementById('edit-budget-next-version').textContent = `v${(budget.version || 1) + 1}`;
+
+    initEditBudgetProducts();
+    renderEditBudgetItems();
+    modalEditBudget.classList.add('active');
+  }
+
+  function renderEditBudgetItems() {
+    const tbody = document.getElementById('edit-items-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (editingBudgetItems.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No hay productos en el presupuesto.</td></tr>';
+      document.getElementById('edit-summary-subtotal').textContent = '$0.00';
+      document.getElementById('edit-summary-tax').textContent = '$0.00';
+      document.getElementById('edit-summary-total').textContent = '$0.00';
+      return;
+    }
+
+    let subtotal = 0;
+    editingBudgetItems.forEach((item, index) => {
+      const itemSub = item.price * item.quantity;
+      subtotal += itemSub;
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><strong>${item.name}</strong></td>
+        <td>$${Number(item.price).toFixed(2)}</td>
+        <td>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <button class="btn btn-sm btn-secondary btn-budget-minus" data-idx="${index}" style="padding: 2px 6px;">-</button>
+            <span>${item.quantity}</span>
+            <button class="btn btn-sm btn-secondary btn-budget-plus" data-idx="${index}" style="padding: 2px 6px;">+</button>
+          </div>
+        </td>
+        <td>$${itemSub.toFixed(2)}</td>
+        <td>
+          <button class="btn btn-sm btn-danger btn-budget-del" data-idx="${index}">&times;</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    });
+
+    const tax = subtotal * 0.16;
+    const total = subtotal + tax;
+
+    document.getElementById('edit-summary-subtotal').textContent = `$${subtotal.toFixed(2)}`;
+    document.getElementById('edit-summary-tax').textContent = `$${tax.toFixed(2)}`;
+    document.getElementById('edit-summary-total').textContent = `$${total.toFixed(2)}`;
+
+    tbody.querySelectorAll('.btn-budget-minus').forEach(b => {
+      b.addEventListener('click', () => {
+        const idx = b.getAttribute('data-idx');
+        if (editingBudgetItems[idx].quantity > 1) {
+          editingBudgetItems[idx].quantity -= 1;
+          renderEditBudgetItems();
+        }
+      });
+    });
+
+    tbody.querySelectorAll('.btn-budget-plus').forEach(b => {
+      b.addEventListener('click', () => {
+        const idx = b.getAttribute('data-idx');
+        editingBudgetItems[idx].quantity += 1;
+        renderEditBudgetItems();
+      });
+    });
+
+    tbody.querySelectorAll('.btn-budget-del').forEach(b => {
+      b.addEventListener('click', () => {
+        const idx = b.getAttribute('data-idx');
+        editingBudgetItems.splice(idx, 1);
+        renderEditBudgetItems();
+      });
+    });
+  }
+
+  if (btnEditAddItem) {
+    btnEditAddItem.addEventListener('click', () => {
+      const prodId = selectEditProduct.value;
+      const qty = parseInt(inputEditQty.value) || 1;
+      if (!prodId) {
+        alert('Selecciona un producto para añadir.');
+        return;
+      }
+      const p = cachedProducts.find(x => x.id == prodId);
+      editingBudgetItems.push({
+        product_id: p.id,
+        name: p.name,
+        price: Number(p.price),
+        quantity: qty
+      });
+
+      selectEditProduct.value = '';
+      if (inputEditPrice) inputEditPrice.value = '';
+      if (inputEditQty) inputEditQty.value = '1';
+      renderEditBudgetItems();
+    });
+  }
+
+  if (btnCloseEditBudget) btnCloseEditBudget.addEventListener('click', () => modalEditBudget.classList.remove('active'));
+  if (btnCancelEditBudget) btnCancelEditBudget.addEventListener('click', () => modalEditBudget.classList.remove('active'));
+
+  if (btnSaveEditBudget) {
+    btnSaveEditBudget.addEventListener('click', async () => {
+      if (!currentEditingBudget) return;
+      if (editingBudgetItems.length === 0) {
+        alert('El presupuesto debe contener al menos un producto.');
+        return;
+      }
+
+      const subtotal = editingBudgetItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
+      const tax = subtotal * 0.16;
+      const total = subtotal + tax;
+
+      // 1. NUEVO OPERATION_ID PARA IDEMPOTENCIA
+      const newOperationId = crypto.randomUUID();
+      const newVersion = (currentEditingBudget.version || 1) + 1;
+
+      currentEditingBudget.items = editingBudgetItems;
+      currentEditingBudget.subtotal = subtotal;
+      currentEditingBudget.tax = tax;
+      currentEditingBudget.total = total;
+      currentEditingBudget.version = newVersion;
+      currentEditingBudget.status = 'pending_sync';
+      currentEditingBudget.updated_at = new Date().toISOString();
+
+      await localDb.savePresupuesto(currentEditingBudget);
+
+      await localDb.enqueueOperation({
+        operation_id: newOperationId,
+        client_id: clientId,
+        entity: 'presupuestos',
+        record_id: currentEditingBudget.server_id || currentEditingBudget.local_id,
+        operation_type: 'update_budget',
+        payload: {
+          correlativo: currentEditingBudget.correlativo,
+          client_id: currentEditingBudget.client_id,
+          client_name: currentEditingBudget.client_name,
+          items: editingBudgetItems,
+          subtotal: subtotal,
+          tax: tax,
+          total: total,
+          version: newVersion
+        },
+        base_version: currentEditingBudget.version,
+        status: 'pending',
+        created_at: new Date().toISOString()
+      });
+
+      modalEditBudget.classList.remove('active');
+      logActivity('IndexedDB', `Edición guardada en IndexedDB con NUEVO operation_id: ${newOperationId.slice(0, 8)}... (Versión v${newVersion}).`, {
+        correlativo: currentEditingBudget.correlativo,
+        nuevo_operation_id: newOperationId,
+        nueva_version: newVersion,
+        nuevo_total: total
+      });
+
+      await refreshUI();
+
+      if (sync.isOnline()) {
+        await sync.push();
+        await sync.pull();
+        await refreshUI();
+      }
     });
   }
 

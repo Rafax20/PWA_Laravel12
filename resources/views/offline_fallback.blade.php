@@ -33,6 +33,9 @@
         <a href="/" class="btn btn-primary">
           📦 Volver a Productos (Offline OK)
         </a>
+        <a href="/presupuestos" class="btn btn-secondary">
+          📋 Historial Presupuestos (Offline OK)
+        </a>
         <a href="/presupuestos/crear" class="btn btn-secondary">
           📝 Crear Presupuesto (Offline OK)
         </a>

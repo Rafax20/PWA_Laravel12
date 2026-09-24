@@ -58,11 +58,14 @@
       <a href="/" class="nav-tab">
         📦 Productos & Sincronización
       </a>
-      <a href="/clientes" class="nav-tab">
-        👥 Clientes (Offline)
+      <a href="/presupuestos" class="nav-tab">
+        📋 Historial Presupuestos (Offline)
       </a>
       <a href="/presupuestos/crear" class="nav-tab active">
         📝 Crear Presupuesto (Offline)
+      </a>
+      <a href="/clientes" class="nav-tab">
+        👥 Clientes (Offline)
       </a>
       <a href="/reportes-servidor" class="nav-tab nav-server-only" title="Página que requiere conexión obligatoria">
         🔒 Reportes Servidor (Solo Online)
@@ -181,8 +184,8 @@
 
   </div>
 
-  <script src="/js/db.js?v=5"></script>
-  <script src="/js/sync.js?v=5"></script>
+  <script src="/js/db.js?v=6"></script>
+  <script src="/js/sync.js?v=6"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);

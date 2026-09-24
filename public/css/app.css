@@ -179,7 +179,7 @@ body {
 
 .btn-primary {
   background: var(--primary);
-  color: white;
+  color: #ffffff !important;
 }
 .btn-primary:hover {
   background: var(--primary-hover);

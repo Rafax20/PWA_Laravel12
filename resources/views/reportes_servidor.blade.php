@@ -30,11 +30,14 @@
       <a href="/" class="nav-tab">
         📦 Productos & Sincronización
       </a>
-      <a href="/clientes" class="nav-tab">
-        👥 Clientes (Offline)
+      <a href="/presupuestos" class="nav-tab">
+        📋 Historial Presupuestos (Offline)
       </a>
       <a href="/presupuestos/crear" class="nav-tab">
         📝 Crear Presupuesto (Offline)
+      </a>
+      <a href="/clientes" class="nav-tab">
+        👥 Clientes (Offline)
       </a>
       <a href="/reportes-servidor" class="nav-tab active nav-server-only">
         🔒 Reportes Servidor (Solo Online)

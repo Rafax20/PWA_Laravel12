@@ -98,22 +98,24 @@ class SyncController extends Controller
             }
 
             // ==========================================
-            // CASO A: OPERACIÓN SOBRE PRESUPUESTOS (CREACIÓN / SYNC)
+            // CASO A: OPERACIÓN SOBRE PRESUPUESTOS (CREACIÓN / EDICIÓN)
             // ==========================================
-            if ($entity === 'presupuestos' || $operationType === 'create_budget') {
+            if ($entity === 'presupuestos' || $operationType === 'create_budget' || $operationType === 'update_budget') {
                 // 1. REGLA DE IDEMPOTENCIA:
                 $alreadyProcessed = ProcessedOperation::where('operation_id', $operationId)->first();
                 if ($alreadyProcessed) {
                     $existing = Presupuesto::where('temp_correlativo', $payload['correlativo'] ?? '')
                         ->orWhere('correlativo', $payload['correlativo'] ?? '')
+                        ->orWhere('id', $recordId)
                         ->first();
 
                     $results[] = [
                         'operation_id' => $operationId,
                         'client_id' => $clientId,
                         'entity' => 'presupuestos',
+                        'operation_type' => $operationType,
                         'status' => 'ALREADY_PROCESSED',
-                        'message' => 'Idempotencia: El presupuesto ya fue sincronizado anteriormente. No se vuelve a duplicar en el servidor.',
+                        'message' => 'Idempotencia: La operación con operation_id ' . substr($operationId, 0, 8) . '... ya fue procesada anteriormente por Laravel. No se vuelven a aplicar cambios duplicados.',
                         'presupuesto' => $existing,
                         'official_correlativo' => $existing ? $existing->correlativo : null,
                         'temp_correlativo' => $payload['correlativo'] ?? null,
@@ -121,7 +123,44 @@ class SyncController extends Controller
                     continue;
                 }
 
-                // 2. ASIGNACIÓN OFICIAL Y ATÓMICA DEL CORRELATIVO EN LARAVEL
+                // 2. EDICIÓN DE PRESUPUESTO EXISTENTE (Requiere nuevo operation_id para ser procesado)
+                if ($operationType === 'update_budget') {
+                    $presupuesto = Presupuesto::where('correlativo', $payload['correlativo'] ?? '')
+                        ->orWhere('id', $recordId)
+                        ->orWhere('temp_correlativo', $payload['correlativo'] ?? '')
+                        ->first();
+
+                    if ($presupuesto) {
+                        if (isset($payload['client_id'])) $presupuesto->client_id = (string)$payload['client_id'];
+                        if (isset($payload['client_name'])) $presupuesto->client_name = $payload['client_name'];
+                        if (isset($payload['subtotal'])) $presupuesto->subtotal = (float)$payload['subtotal'];
+                        if (isset($payload['tax'])) $presupuesto->tax = (float)$payload['tax'];
+                        if (isset($payload['total'])) $presupuesto->total = (float)$payload['total'];
+                        if (isset($payload['items'])) $presupuesto->items = $payload['items'];
+                        $presupuesto->version = ($presupuesto->version ?? 1) + 1;
+                        $presupuesto->save();
+
+                        ProcessedOperation::create([
+                            'operation_id' => $operationId,
+                            'client_id' => $clientId,
+                            'processed_at' => now(),
+                        ]);
+
+                        $results[] = [
+                            'operation_id' => $operationId,
+                            'client_id' => $clientId,
+                            'entity' => 'presupuestos',
+                            'operation_type' => 'update_budget',
+                            'status' => 'SUCCESS',
+                            'message' => "Presupuesto {$presupuesto->correlativo} editado exitosamente en Laravel (Nueva versión: {$presupuesto->version}, nuevo operation_id: " . substr($operationId, 0, 8) . "...).",
+                            'presupuesto' => $presupuesto,
+                            'official_correlativo' => $presupuesto->correlativo,
+                        ];
+                        continue;
+                    }
+                }
+
+                // 3. ASIGNACIÓN OFICIAL Y ATÓMICA DEL CORRELATIVO EN LARAVEL PARA NUEVO PRESUPUESTO
                 $lastId = Presupuesto::max('id') ?? 0;
                 $nextCorrelativo = 'PRE-' . str_pad($lastId + 1001, 7, '0', STR_PAD_LEFT);
 
@@ -138,7 +177,7 @@ class SyncController extends Controller
                     'status' => 'sincronizado',
                 ]);
 
-                // 3. REGISTRAR OPERACIÓN PROCESADA (Idempotencia)
+                // 4. REGISTRAR OPERACIÓN PROCESADA (Idempotencia)
                 ProcessedOperation::create([
                     'operation_id' => $operationId,
                     'client_id' => $clientId,
@@ -149,6 +188,7 @@ class SyncController extends Controller
                     'operation_id' => $operationId,
                     'client_id' => $clientId,
                     'entity' => 'presupuestos',
+                    'operation_type' => 'create_budget',
                     'status' => 'SUCCESS',
                     'message' => "Presupuesto sincronizado con éxito. Correlativo provisional {$payload['correlativo']} reemplazado por correlativo oficial {$nextCorrelativo}.",
                     'presupuesto' => $nuevoPresupuesto,

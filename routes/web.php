@@ -10,6 +10,10 @@ Route::get('/clientes', function () {
     return view('clientes');
 });
 
+Route::get('/presupuestos', function () {
+    return view('presupuestos');
+});
+
 Route::get('/presupuestos/crear', function () {
     return view('presupuestos_crear');
 });
