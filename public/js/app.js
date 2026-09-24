@@ -126,8 +126,28 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // 7. Función principal de refresco de interfaz (renderizado reactivo Vanilla)
   async function refreshUI() {
-    // A. Identificador de dispositivo
+    // A. Identificador de dispositivo y selector visual de botones
     elCurrentDevice.textContent = clientId;
+    const linkA = document.getElementById('link-device-a');
+    const linkB = document.getElementById('link-device-b');
+    const linkNew = document.getElementById('link-device-new');
+    if (linkA && linkB) {
+      if (clientId === 'B') {
+        linkB.classList.add('active');
+        linkA.classList.remove('active');
+        if (linkNew) {
+          linkNew.href = '/?device=A';
+          linkNew.textContent = '+ Abrir Disp. A en otra ventana ↗';
+        }
+      } else {
+        linkA.classList.add('active');
+        linkB.classList.remove('active');
+        if (linkNew) {
+          linkNew.href = '/?device=B';
+          linkNew.textContent = '+ Abrir Disp. B en otra ventana ↗';
+        }
+      }
+    }
 
     // B. Estado de conexión
     const isOnline = sync.isOnline();

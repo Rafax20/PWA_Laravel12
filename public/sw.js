@@ -1,12 +1,12 @@
-const CACHE_NAME = 'presupuestos-pwa-v1';
+const CACHE_NAME = 'presupuestos-pwa-v2';
 
 const ASSETS_TO_CACHE = [
   '/',
   '/manifest.json',
   '/css/app.css',
-  '/js/db.js?v=2',
-  '/js/sync.js?v=2',
-  '/js/app.js?v=2',
+  '/js/db.js?v=3',
+  '/js/sync.js?v=3',
+  '/js/app.js?v=3',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png'

@@ -28,9 +28,10 @@
           <button id="btn-install-pwa" class="btn btn-sm btn-primary" style="display: none; margin-right: 6px;">
             ⬇ Instalar App
           </button>
-          <span>Abrir pestaña:</span>
-          <a href="/?device=A" class="device-link {{ request('device', 'A') === 'A' ? 'active' : '' }}">Dispositivo A</a>
-          <a href="/?device=B" target="_blank" class="device-link {{ request('device') === 'B' ? 'active' : '' }}">Dispositivo B ↗</a>
+          <span>Dispositivo actual:</span>
+          <a id="link-device-a" href="/?device=A" class="device-link">Dispositivo A</a>
+          <a id="link-device-b" href="/?device=B" class="device-link">Dispositivo B</a>
+          <a id="link-device-new" href="/?device=B" target="_blank" class="device-link" style="opacity: 0.75; font-size: 0.75rem; margin-left: 4px;" title="Abrir otra ventana separada para simular el otro dispositivo en paralelo">+ Otra Ventana ↗</a>
         </div>
       </div>
 
@@ -180,8 +181,8 @@
   </div>
 
   <!-- Scripts Vanilla JS (Sin frameworks) -->
-  <script src="/js/db.js?v=2"></script>
-  <script src="/js/sync.js?v=2"></script>
-  <script src="/js/app.js?v=2"></script>
+  <script src="/js/db.js?v=3"></script>
+  <script src="/js/sync.js?v=3"></script>
+  <script src="/js/app.js?v=3"></script>
 </body>
 </html>
