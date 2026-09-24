@@ -112,91 +112,9 @@
 
   </div>
 
-  <!-- Modal: Editar Presupuesto (con nuevo operation_id) -->
-  <div id="modal-edit-budget" class="modal-overlay">
-    <div class="modal-card" style="max-width: 650px;">
-      <div class="modal-header">
-        <h3 class="modal-title">Editar Presupuesto: <span id="edit-budget-correlativo" style="color: #38bdf8;"></span></h3>
-        <button id="btn-close-edit-budget" class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.85rem; color: #93c5fd;">
-          💡 <strong>Regla de Idempotencia y Versión:</strong> Al guardar la edición se generará automáticamente un <strong>nuevo operation_id (UUID v4)</strong> y se incrementará la versión a <strong id="edit-budget-next-version">v2</strong> para que Laravel valide y aplique los cambios sin conflicto.
-        </div>
-
-        <div class="form-group">
-          <label>Cliente:</label>
-          <input type="text" id="edit-budget-client" class="form-input" readonly>
-        </div>
-
-        <div class="section-title" style="font-size: 1rem; margin-top: 14px; margin-bottom: 8px;">
-          <span>Renglones del Presupuesto</span>
-        </div>
-
-        <!-- Agregar producto adicional a la edición -->
-        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; align-items: flex-end; margin-bottom: 12px; background: #0f172a; padding: 10px; border-radius: 6px;">
-          <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.75rem;">Añadir Producto</label>
-            <select id="edit-select-product" class="form-input" style="font-size: 0.85rem; padding: 6px;">
-              <option value="">-- Seleccionar --</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.75rem;">Precio ($)</label>
-            <input type="number" id="edit-input-price" class="form-input" readonly style="font-size: 0.85rem; padding: 6px;">
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.75rem;">Cantidad</label>
-            <input type="number" id="edit-input-qty" class="form-input" min="1" value="1" style="font-size: 0.85rem; padding: 6px;">
-          </div>
-          <button id="btn-edit-add-item" class="btn btn-sm btn-primary" style="height: 34px;">+ Añadir</button>
-        </div>
-
-        <!-- Tabla de renglones en edición -->
-        <table class="items-table" style="font-size: 0.85rem; margin-bottom: 14px;">
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th>Precio</th>
-              <th>Cantidad</th>
-              <th>Subtotal</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody id="edit-items-tbody">
-            <!-- Items del presupuesto cargados por JS -->
-          </tbody>
-        </table>
-
-        <!-- Totales recalculados -->
-        <div class="budget-summary" style="margin-top: 10px; padding: 12px;">
-          <div class="summary-row">
-            <span>Subtotal:</span>
-            <strong id="edit-summary-subtotal">$0.00</strong>
-          </div>
-          <div class="summary-row">
-            <span>IVA (16%):</span>
-            <strong id="edit-summary-tax">$0.00</strong>
-          </div>
-          <div class="summary-row summary-total">
-            <span>Total General:</span>
-            <span id="edit-summary-total">$0.00</span>
-          </div>
-        </div>
-
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px;">
-          <button id="btn-cancel-edit-budget" class="btn btn-secondary">Cancelar</button>
-          <button id="btn-save-edit-budget" class="btn btn-primary" style="color: #fff !important; font-weight: 700;">
-            💾 Guardar Edición (Nuevo Operation ID)
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Scripts Vanilla JS (Sin frameworks) -->
-  <script src="/js/db.js?v=6"></script>
-  <script src="/js/sync.js?v=6"></script>
+  <script src="/js/db.js?v=7"></script>
+  <script src="/js/sync.js?v=7"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -247,9 +165,6 @@
       const elInputSearch = document.getElementById('input-search');
 
       let currentFilter = 'all'; // 'all', 'synced', 'pending'
-      let currentEditingBudget = null;
-      let editingItems = [];
-      let catalogProducts = [];
 
       function refreshStatus() {
         if (sync.isOnline()) {
@@ -310,21 +225,6 @@
 
       elInputSearch.addEventListener('input', () => {
         renderBudgets();
-      });
-
-      // Cargar catálogo de productos para el modal de edición
-      catalogProducts = await localDb.getAllProducts();
-      const selectEditProd = document.getElementById('edit-select-product');
-      catalogProducts.forEach(p => {
-        const opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = `${p.name} ($${Number(p.price).toFixed(2)})`;
-        selectEditProd.appendChild(opt);
-      });
-
-      selectEditProd.addEventListener('change', () => {
-        const p = catalogProducts.find(x => x.id == selectEditProd.value);
-        document.getElementById('edit-input-price').value = p ? p.price : '';
       });
 
       async function renderBudgets() {
@@ -409,9 +309,6 @@
                 <p style="margin-top: 4px;"><strong>Fecha emisión:</strong> ${new Date(b.created_at || Date.now()).toLocaleString()}</p>
               </div>
               <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <button class="btn btn-sm btn-secondary btn-open-edit" data-id="${b.local_id}">
-                  ✏️ Editar Presupuesto
-                </button>
                 ${isSynced ? `
                   <button class="btn btn-sm btn-secondary btn-test-idempotency" data-id="${b.local_id}">
                     Probar Idempotencia
@@ -425,15 +322,6 @@
             </div>
           `;
           container.appendChild(card);
-        });
-
-        // Eventos: Editar
-        container.querySelectorAll('.btn-open-edit').forEach(btn => {
-          btn.addEventListener('click', () => {
-            const id = btn.getAttribute('data-id');
-            const b = list.find(x => x.local_id === id);
-            if (b) openEditModal(b);
-          });
         });
 
         // Eventos: Idempotencia
@@ -461,172 +349,6 @@
           });
         });
       }
-
-      // Lógica de Modal de Edición de Presupuesto
-      const modalEdit = document.getElementById('modal-edit-budget');
-      const btnCloseEdit = document.getElementById('btn-close-edit-budget');
-      const btnCancelEdit = document.getElementById('btn-cancel-edit-budget');
-      const btnSaveEdit = document.getElementById('btn-save-edit-budget');
-
-      function openEditModal(budget) {
-        currentEditingBudget = budget;
-        editingItems = JSON.parse(JSON.stringify(budget.items || []));
-
-        document.getElementById('edit-budget-correlativo').textContent = budget.correlativo;
-        document.getElementById('edit-budget-client').value = budget.client_name;
-        document.getElementById('edit-budget-next-version').textContent = `v${(budget.version || 1) + 1}`;
-
-        renderEditItems();
-        modalEdit.classList.add('active');
-      }
-
-      function renderEditItems() {
-        const tbody = document.getElementById('edit-items-tbody');
-        tbody.innerHTML = '';
-
-        if (editingItems.length === 0) {
-          tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted);">No hay productos en este presupuesto.</td></tr>`;
-          document.getElementById('edit-summary-subtotal').textContent = '$0.00';
-          document.getElementById('edit-summary-tax').textContent = '$0.00';
-          document.getElementById('edit-summary-total').textContent = '$0.00';
-          return;
-        }
-
-        let subtotal = 0;
-        editingItems.forEach((item, index) => {
-          const itemSub = item.price * item.quantity;
-          subtotal += itemSub;
-
-          const tr = document.createElement('tr');
-          tr.innerHTML = `
-            <td><strong>${item.name}</strong></td>
-            <td>$${Number(item.price).toFixed(2)}</td>
-            <td>
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <button class="btn btn-sm btn-secondary btn-qty-minus" data-idx="${index}" style="padding: 2px 6px;">-</button>
-                <span>${item.quantity}</span>
-                <button class="btn btn-sm btn-secondary btn-qty-plus" data-idx="${index}" style="padding: 2px 6px;">+</button>
-              </div>
-            </td>
-            <td>$${itemSub.toFixed(2)}</td>
-            <td>
-              <button class="btn btn-sm btn-danger btn-remove-edit-item" data-idx="${index}">&times;</button>
-            </td>
-          `;
-          tbody.appendChild(tr);
-        });
-
-        const tax = subtotal * 0.16;
-        const total = subtotal + tax;
-
-        document.getElementById('edit-summary-subtotal').textContent = `$${subtotal.toFixed(2)}`;
-        document.getElementById('edit-summary-tax').textContent = `$${tax.toFixed(2)}`;
-        document.getElementById('edit-summary-total').textContent = `$${total.toFixed(2)}`;
-
-        // Eventos en renglones
-        tbody.querySelectorAll('.btn-qty-minus').forEach(b => {
-          b.addEventListener('click', () => {
-            const idx = b.getAttribute('data-idx');
-            if (editingItems[idx].quantity > 1) {
-              editingItems[idx].quantity -= 1;
-              renderEditItems();
-            }
-          });
-        });
-
-        tbody.querySelectorAll('.btn-qty-plus').forEach(b => {
-          b.addEventListener('click', () => {
-            const idx = b.getAttribute('data-idx');
-            editingItems[idx].quantity += 1;
-            renderEditItems();
-          });
-        });
-
-        tbody.querySelectorAll('.btn-remove-edit-item').forEach(b => {
-          b.addEventListener('click', () => {
-            const idx = b.getAttribute('data-idx');
-            editingItems.splice(idx, 1);
-            renderEditItems();
-          });
-        });
-      }
-
-      document.getElementById('btn-edit-add-item').addEventListener('click', () => {
-        const prodId = selectEditProd.value;
-        const qty = parseInt(document.getElementById('edit-input-qty').value) || 1;
-        if (!prodId) {
-          alert('Selecciona un producto para añadir.');
-          return;
-        }
-        const p = catalogProducts.find(x => x.id == prodId);
-        editingItems.push({
-          product_id: p.id,
-          name: p.name,
-          price: Number(p.price),
-          quantity: qty
-        });
-
-        selectEditProd.value = '';
-        document.getElementById('edit-input-price').value = '';
-        document.getElementById('edit-input-qty').value = '1';
-        renderEditItems();
-      });
-
-      btnCloseEdit.addEventListener('click', () => modalEdit.classList.remove('active'));
-      btnCancelEdit.addEventListener('click', () => modalEdit.classList.remove('active'));
-
-      // Guardar Edición con nuevo operation_id
-      btnSaveEdit.addEventListener('click', async () => {
-        if (!currentEditingBudget) return;
-        if (editingItems.length === 0) {
-          alert('El presupuesto debe contener al menos un producto.');
-          return;
-        }
-
-        const subtotal = editingItems.reduce((acc, i) => acc + (i.price * i.quantity), 0);
-        const tax = subtotal * 0.16;
-        const total = subtotal + tax;
-
-        // 1. GENERAR NUEVO OPERATION_ID (Clave para Idempotencia en la edición)
-        const newOperationId = crypto.randomUUID();
-        const newVersion = (currentEditingBudget.version || 1) + 1;
-
-        // 2. Actualizar presupuesto local en IndexedDB
-        currentEditingBudget.items = editingItems;
-        currentEditingBudget.subtotal = subtotal;
-        currentEditingBudget.tax = tax;
-        currentEditingBudget.total = total;
-        currentEditingBudget.version = newVersion;
-        currentEditingBudget.status = 'pending_sync';
-        currentEditingBudget.updated_at = new Date().toISOString();
-
-        await localDb.savePresupuesto(currentEditingBudget);
-
-        // 3. Encolar operación de actualización con el nuevo operation_id
-        await localDb.enqueueOperation({
-          operation_id: newOperationId,
-          client_id: clientId,
-          entity: 'presupuestos',
-          record_id: currentEditingBudget.server_id || currentEditingBudget.local_id,
-          operation_type: 'update_budget',
-          payload: currentEditingBudget,
-          base_version: currentEditingBudget.version,
-          status: 'pending',
-          created_at: new Date().toISOString()
-        });
-
-        modalEdit.classList.remove('active');
-        alert(`✓ Presupuesto editado localmente.\n\nSe generó un NUEVO operation_id: ${newOperationId.slice(0, 8)}...\nNueva versión: v${newVersion}\n\nQuedó encolado en sync_queue para sincronizarse con Laravel.`);
-
-        await renderBudgets();
-
-        // 4. Si hay conexión activa, enviarlo de inmediato
-        if (sync.isOnline()) {
-          await sync.push();
-          await sync.pull();
-          await renderBudgets();
-        }
-      });
 
       // Carga inicial
       refreshStatus();

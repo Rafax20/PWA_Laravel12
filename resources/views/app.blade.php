@@ -200,83 +200,6 @@
     </div>
   </div>
 
-  <!-- Modal: Editar Presupuesto (con nuevo operation_id para Idempotencia) -->
-  <div id="modal-edit-budget" class="modal-overlay">
-    <div class="modal-card" style="max-width: 650px;">
-      <div class="modal-header">
-        <h3 class="modal-title">Editar Presupuesto: <span id="edit-budget-correlativo" style="color: #38bdf8;"></span></h3>
-        <button id="btn-close-edit-budget" class="modal-close">&times;</button>
-      </div>
-      <div class="modal-body">
-        <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; border-radius: 6px; padding: 10px 14px; margin-bottom: 16px; font-size: 0.85rem; color: #93c5fd;">
-          💡 <strong>Regla de Idempotencia y Versión:</strong> Al guardar la edición se generará automáticamente un <strong>nuevo operation_id (UUID v4)</strong> y se incrementará la versión a <strong id="edit-budget-next-version">v2</strong> para que Laravel valide y aplique los cambios sin conflicto.
-        </div>
-
-        <div class="form-group">
-          <label>Cliente:</label>
-          <input type="text" id="edit-budget-client" class="form-input" readonly>
-        </div>
-
-        <div class="section-title" style="font-size: 1rem; margin-top: 14px; margin-bottom: 8px;">
-          <span>Renglones del Presupuesto</span>
-        </div>
-
-        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr auto; gap: 8px; align-items: flex-end; margin-bottom: 12px; background: #0f172a; padding: 10px; border-radius: 6px;">
-          <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.75rem;">Añadir Producto</label>
-            <select id="edit-select-product" class="form-input" style="font-size: 0.85rem; padding: 6px;">
-              <option value="">-- Seleccionar --</option>
-            </select>
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.75rem;">Precio ($)</label>
-            <input type="number" id="edit-input-price" class="form-input" readonly style="font-size: 0.85rem; padding: 6px;">
-          </div>
-          <div class="form-group" style="margin-bottom: 0;">
-            <label style="font-size: 0.75rem;">Cantidad</label>
-            <input type="number" id="edit-input-qty" class="form-input" min="1" value="1" style="font-size: 0.85rem; padding: 6px;">
-          </div>
-          <button id="btn-edit-add-item" class="btn btn-sm btn-primary" style="height: 34px;">+ Añadir</button>
-        </div>
-
-        <table class="items-table" style="font-size: 0.85rem; margin-bottom: 14px;">
-          <thead>
-            <tr>
-              <th>Producto</th>
-              <th>Precio</th>
-              <th>Cantidad</th>
-              <th>Subtotal</th>
-              <th>Acción</th>
-            </tr>
-          </thead>
-          <tbody id="edit-items-tbody"></tbody>
-        </table>
-
-        <div class="budget-summary" style="margin-top: 10px; padding: 12px;">
-          <div class="summary-row">
-            <span>Subtotal:</span>
-            <strong id="edit-summary-subtotal">$0.00</strong>
-          </div>
-          <div class="summary-row">
-            <span>IVA (16%):</span>
-            <strong id="edit-summary-tax">$0.00</strong>
-          </div>
-          <div class="summary-row summary-total">
-            <span>Total General:</span>
-            <span id="edit-summary-total">$0.00</span>
-          </div>
-        </div>
-
-        <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 18px;">
-          <button id="btn-cancel-edit-budget" class="btn btn-secondary">Cancelar</button>
-          <button id="btn-save-edit-budget" class="btn btn-primary" style="color: #fff !important; font-weight: 700;">
-            💾 Guardar Edición (Nuevo Operation ID)
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- Modal: Cola Local (sync_queue) -->
   <div id="modal-queue" class="modal-overlay">
     <div class="modal-card">
@@ -304,8 +227,8 @@
   </div>
 
   <!-- Scripts Vanilla JS (Sin frameworks) -->
-  <script src="/js/db.js?v=6"></script>
-  <script src="/js/sync.js?v=6"></script>
-  <script src="/js/app.js?v=6"></script>
+  <script src="/js/db.js?v=7"></script>
+  <script src="/js/sync.js?v=7"></script>
+  <script src="/js/app.js?v=7"></script>
 </body>
 </html>

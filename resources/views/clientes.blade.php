@@ -152,8 +152,8 @@
 
   </div>
 
-  <script src="/js/db.js?v=6"></script>
-  <script src="/js/sync.js?v=6"></script>
+  <script src="/js/db.js?v=7"></script>
+  <script src="/js/sync.js?v=7"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -200,7 +200,10 @@
         if (elLogsFeed) elLogsFeed.prepend(entry);
       }
 
-      const sync = new SyncManager(localDb, refreshStatus, logActivity);
+      const sync = new SyncManager(localDb, async () => {
+        refreshStatus();
+        await renderClients();
+      }, logActivity);
 
       const elConn = document.getElementById('connection-badge');
       const elBtnToggle = document.getElementById('btn-toggle-offline');
@@ -255,15 +258,9 @@
         }
 
         try {
-          logActivity('Laravel API', 'Consultando GET /api/clients al servidor...');
-          const res = await fetch('/api/clients');
-          const data = await res.json();
-          if (data.clients) {
-            await localDb.saveClients(data.clients);
-            logActivity('IndexedDB', `${data.clients.length} clientes guardados localmente en IndexedDB.`);
-          }
+          await sync.pull();
         } catch (e) {
-          logActivity('Error', 'Fallo al consultar API, usando IndexedDB local.');
+          logActivity('Error', 'Fallo al sincronizar con Laravel, usando IndexedDB local.');
         }
         await renderClients();
       }

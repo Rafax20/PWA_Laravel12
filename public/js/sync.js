@@ -14,11 +14,11 @@ class SyncManager {
     this.isSyncing = false;
 
     // Escuchadores de eventos de red del navegador
-    window.addEventListener('online', () => {
-      this.onLog('Red', 'El navegador detectó conexión a Internet real.');
+    window.addEventListener('online', async () => {
+      this.onLog('Red', 'El navegador detectó conexión a Internet real. Sincronizando automáticamente todas las tablas con Laravel...');
       if (!this.simulatedOffline) {
         this.onStateChange();
-        this.autoSync();
+        await this.autoSync();
       }
     });
 
@@ -56,11 +56,11 @@ class SyncManager {
         dispositivo: this.db.clientId
       });
     } else {
-      this.onLog('Simulación', `MODO OFFLINE DESACTIVADO (Dispositivo ${this.db.clientId}). La conexión al servidor fue restablecida.`, {
+      this.onLog('Simulación', `MODO OFFLINE DESACTIVADO (Dispositivo ${this.db.clientId}). La conexión al servidor fue restablecida. Sincronizando todas las tablas...`, {
         estado: 'ONLINE',
         dispositivo: this.db.clientId
       });
-      // Al volver la conexión, disparamos sincronización automática
+      // Al volver la conexión, disparamos sincronización automática (push pendientes + pull tablas completas)
       await this.autoSync();
     }
     this.onStateChange();
@@ -68,33 +68,54 @@ class SyncManager {
   }
 
   /**
-   * Descarga la lista más reciente de productos y presupuestos desde Laravel y actualiza IndexedDB
+   * Descarga la lista más reciente de productos, clientes y presupuestos desde Laravel y actualiza IndexedDB
    */
   async pull() {
     if (!this.isOnline()) {
       this.onLog('IndexedDB', 'Dispositivo OFFLINE: No es posible consultar el servidor Laravel. Los datos se cargan exclusivamente desde la base local IndexedDB.');
       return {
         products: await this.db.getAllProducts(),
-        presupuestos: await this.db.getAllPresupuestos()
+        presupuestos: await this.db.getAllPresupuestos(),
+        clients: await this.db.getAllClients()
       };
     }
 
     try {
-      this.onLog('Laravel API', 'Consultando GET /api/products y GET /api/presupuestos para obtener el estado oficial...');
+      this.onLog('Laravel API', 'Consultando GET /api/products, GET /api/presupuestos y GET /api/clients para sincronizar el estado oficial...');
 
       // 1. Descargar Productos
-      const prodRes = await fetch('/api/products', {
-        headers: { 'Accept': 'application/json' }
-      });
-      if (prodRes.ok) {
-        const prodData = await prodRes.json();
-        if (prodData.products && Array.isArray(prodData.products)) {
-          await this.db.saveProducts(prodData.products);
-          this.onLog('IndexedDB', `Copia local de catálogo actualizada: ${prodData.products.length} productos sincronizados con Laravel.`);
+      try {
+        const prodRes = await fetch('/api/products', {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (prodRes.ok) {
+          const prodData = await prodRes.json();
+          if (prodData.products && Array.isArray(prodData.products)) {
+            await this.db.saveProducts(prodData.products);
+            this.onLog('IndexedDB', `✓ Copia local de catálogo actualizada: ${prodData.products.length} productos sincronizados con Laravel.`);
+          }
         }
+      } catch (errProd) {
+        console.warn('[SyncManager] Error al sincronizar productos del servidor:', errProd);
       }
 
-      // 2. Descargar Presupuestos oficiales del servidor
+      // 2. Descargar Directorio de Clientes
+      try {
+        const clientRes = await fetch('/api/clients', {
+          headers: { 'Accept': 'application/json' }
+        });
+        if (clientRes.ok) {
+          const clientData = await clientRes.json();
+          if (clientData.clients && Array.isArray(clientData.clients)) {
+            await this.db.saveClients(clientData.clients);
+            this.onLog('IndexedDB', `✓ Directorio de clientes actualizado: ${clientData.clients.length} clientes sincronizados con Laravel.`);
+          }
+        }
+      } catch (errClient) {
+        console.warn('[SyncManager] Error al sincronizar clientes del servidor:', errClient);
+      }
+
+      // 3. Descargar Presupuestos oficiales del servidor
       try {
         const presRes = await fetch('/api/presupuestos', {
           headers: { 'Accept': 'application/json' }
@@ -102,14 +123,17 @@ class SyncManager {
         if (presRes.ok) {
           const presData = await presRes.json();
           if (presData.presupuestos && Array.isArray(presData.presupuestos)) {
+            const localBudgets = await this.db.getAllPresupuestos();
             let newSyncedCount = 0;
+            let updatedCount = 0;
+
             for (const serverP of presData.presupuestos) {
               const matched = localBudgets.find(b =>
                 (b.server_id && b.server_id === serverP.id) ||
-                b.correlativo === serverP.correlativo ||
-                (serverP.temp_correlativo && b.correlativo === serverP.temp_correlativo) ||
-                (serverP.temp_correlativo && b.local_id === serverP.temp_correlativo)
+                (b.correlativo && b.correlativo === serverP.correlativo) ||
+                (serverP.temp_correlativo && (b.correlativo === serverP.temp_correlativo || b.local_id === serverP.temp_correlativo))
               );
+
               if (matched) {
                 matched.correlativo = serverP.correlativo;
                 matched.status = 'sincronizado';
@@ -120,7 +144,9 @@ class SyncManager {
                 matched.total = Number(serverP.total);
                 matched.client_name = serverP.client_name || matched.client_name;
                 matched.version = serverP.version || matched.version || 1;
+                matched.synced_at = serverP.updated_at || new Date().toISOString();
                 await this.db.savePresupuesto(matched);
+                updatedCount++;
               } else {
                 newSyncedCount++;
                 await this.db.savePresupuesto({
@@ -137,12 +163,13 @@ class SyncManager {
                   version: serverP.version || 1,
                   status: 'sincronizado',
                   created_at: serverP.created_at,
-                  synced_at: serverP.updated_at
+                  synced_at: serverP.updated_at || new Date().toISOString()
                 });
               }
             }
-            if (newSyncedCount > 0) {
-              this.onLog('IndexedDB', `✓ Descargados ${newSyncedCount} nuevo(s) presupuesto(s) del servidor para este dispositivo.`);
+
+            if (newSyncedCount > 0 || updatedCount > 0) {
+              this.onLog('IndexedDB', `✓ Presupuestos sincronizados con Laravel: ${newSyncedCount} nuevo(s) descargados, ${updatedCount} actualizados.`);
             }
           }
         }
@@ -152,13 +179,15 @@ class SyncManager {
 
       return {
         products: await this.db.getAllProducts(),
-        presupuestos: await this.db.getAllPresupuestos()
+        presupuestos: await this.db.getAllPresupuestos(),
+        clients: await this.db.getAllClients()
       };
     } catch (err) {
       this.onLog('Red', `Fallo al conectar con Laravel (${err.message}). Cargando desde IndexedDB.`);
       return {
         products: await this.db.getAllProducts(),
-        presupuestos: await this.db.getAllPresupuestos()
+        presupuestos: await this.db.getAllPresupuestos(),
+        clients: await this.db.getAllClients()
       };
     }
   }

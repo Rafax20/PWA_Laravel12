@@ -184,8 +184,8 @@
 
   </div>
 
-  <script src="/js/db.js?v=6"></script>
-  <script src="/js/sync.js?v=6"></script>
+  <script src="/js/db.js?v=7"></script>
+  <script src="/js/sync.js?v=7"></script>
   <script>
     document.addEventListener('DOMContentLoaded', async () => {
       const urlParams = new URLSearchParams(window.location.search);
@@ -266,6 +266,12 @@
         await renderSavedBudgets();
         refreshStatus();
       });
+
+      // Carga inicial y auto-pull si hay conexión
+      refreshStatus();
+      if (sync.isOnline()) {
+        await sync.pull();
+      }
 
       // 1. Cargar Clientes y Productos desde IndexedDB local
       let clients = await localDb.getAllClients();
