@@ -23,6 +23,24 @@ class SyncController extends Controller
     }
 
     /**
+     * Devuelve el listado de clientes registrados en el servidor.
+     */
+    public function getClients(): JsonResponse
+    {
+        $clients = [
+            ['id' => 1, 'rif' => 'J-12345678-0', 'name' => 'Inversiones El Sol C.A.', 'phone' => '0414-1112233', 'address' => 'Av. Principal #45'],
+            ['id' => 2, 'rif' => 'J-87654321-9', 'name' => 'Agropecuaria Central S.A.', 'phone' => '0424-5556677', 'address' => 'Calle Comercio #12'],
+            ['id' => 3, 'rif' => 'V-18999888-1', 'name' => 'Distribuidora Juan Pérez', 'phone' => '0412-9998877', 'address' => 'Centro Comercial Las Américas, Local 4'],
+        ];
+
+        return response()->json([
+            'success' => true,
+            'clients' => $clients,
+            'server_time' => now()->toIso8601String(),
+        ]);
+    }
+
+    /**
      * Recibe una o varias operaciones pendientes desde los clientes (Dispositivos).
      * Ejecuta validaciones de idempotencia, concurrencia/versión y aplica cambios.
      */

@@ -14,7 +14,7 @@ class LocalDatabase {
   constructor(clientId) {
     this.clientId = clientId || 'A';
     this.dbName = `pwa_demo_device_${this.clientId}`;
-    this.version = 1;
+    this.version = 2;
     this.db = null;
   }
 
@@ -45,6 +45,16 @@ class LocalDatabase {
         // 3. Almacén de conflictos para resolución en interfaz
         if (!db.objectStoreNames.contains('conflicts')) {
           db.createObjectStore('conflicts', { keyPath: 'operation_id' });
+        }
+
+        // 4. Almacén de clientes locales
+        if (!db.objectStoreNames.contains('clients')) {
+          db.createObjectStore('clients', { keyPath: 'id' });
+        }
+
+        // 5. Almacén de presupuestos locales
+        if (!db.objectStoreNames.contains('presupuestos')) {
+          db.createObjectStore('presupuestos', { keyPath: 'local_id' });
         }
       };
 
@@ -261,16 +271,68 @@ class LocalDatabase {
     });
   }
 
+  // ==========================================
+  // OPERACIONES DE CLIENTES (clients)
+  // ==========================================
+  async saveClients(clients) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['clients'], 'readwrite');
+      const store = tx.objectStore('clients');
+      clients.forEach(c => store.put(c));
+      tx.oncomplete = () => resolve(true);
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async getAllClients() {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['clients'], 'readonly');
+      const store = tx.objectStore('clients');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  // ==========================================
+  // OPERACIONES DE PRESUPUESTOS (presupuestos)
+  // ==========================================
+  async savePresupuesto(p) {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['presupuestos'], 'readwrite');
+      const store = tx.objectStore('presupuestos');
+      store.put(p);
+      tx.oncomplete = () => resolve(p);
+      tx.onerror = (e) => reject(e.target.error);
+    });
+  }
+
+  async getAllPresupuestos() {
+    await this.init();
+    return new Promise((resolve, reject) => {
+      const tx = this.db.transaction(['presupuestos'], 'readonly');
+      const store = tx.objectStore('presupuestos');
+      const request = store.getAll();
+      request.onsuccess = () => resolve(request.result || []);
+      request.onerror = (e) => reject(e.target.error);
+    });
+  }
+
   /**
    * Limpia toda la base de datos local (útil para reiniciar pruebas)
    */
   async clearLocalData() {
     await this.init();
     return new Promise((resolve, reject) => {
-      const tx = this.db.transaction(['products', 'sync_queue', 'conflicts'], 'readwrite');
-      tx.objectStore('products').clear();
-      tx.objectStore('sync_queue').clear();
-      tx.objectStore('conflicts').clear();
+      const stores = ['products', 'sync_queue', 'conflicts'];
+      if (this.db.objectStoreNames.contains('clients')) stores.push('clients');
+      if (this.db.objectStoreNames.contains('presupuestos')) stores.push('presupuestos');
+
+      const tx = this.db.transaction(stores, 'readwrite');
+      stores.forEach(s => tx.objectStore(s).clear());
 
       tx.oncomplete = () => resolve(true);
       tx.onerror = (e) => reject(e.target.error);

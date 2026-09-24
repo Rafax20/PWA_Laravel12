@@ -62,6 +62,22 @@
       </div>
     </header>
 
+    <!-- Navegación Multi-Página de la PWA -->
+    <nav class="main-nav">
+      <a href="/" class="nav-tab active">
+        📦 Productos & Sincronización
+      </a>
+      <a href="/clientes" class="nav-tab">
+        👥 Clientes (Offline)
+      </a>
+      <a href="/presupuestos/crear" class="nav-tab">
+        📝 Crear Presupuesto (Offline)
+      </a>
+      <a href="/reportes-servidor" class="nav-tab nav-server-only" title="Esta página NO está cacheada por el Service Worker a propósito">
+        🔒 Reportes Servidor (Solo Online)
+      </a>
+    </nav>
+
     <!-- Barra de Herramientas y Simulación -->
     <section class="toolbar">
       <button id="btn-toggle-offline" class="btn btn-secondary">
@@ -181,8 +197,8 @@
   </div>
 
   <!-- Scripts Vanilla JS (Sin frameworks) -->
-  <script src="/js/db.js?v=3"></script>
-  <script src="/js/sync.js?v=3"></script>
-  <script src="/js/app.js?v=3"></script>
+  <script src="/js/db.js?v=4"></script>
+  <script src="/js/sync.js?v=4"></script>
+  <script src="/js/app.js?v=4"></script>
 </body>
 </html>

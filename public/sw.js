@@ -1,37 +1,42 @@
-const CACHE_NAME = 'presupuestos-pwa-v2';
+const CACHE_NAME = 'presupuestos-pwa-v3';
 
+// Lista de rutas y recursos que se descargarán para estar 100% disponibles OFFLINE:
+// NOTA CLAVE: La ruta '/reportes-servidor' NO ESTÁ EN ESTA LISTA A PROPÓSITO.
 const ASSETS_TO_CACHE = [
   '/',
+  '/clientes',
+  '/presupuestos/crear',
+  '/offline-fallback',
   '/manifest.json',
   '/css/app.css',
-  '/js/db.js?v=3',
-  '/js/sync.js?v=3',
-  '/js/app.js?v=3',
+  '/js/db.js?v=4',
+  '/js/sync.js?v=4',
+  '/js/app.js?v=4',
   '/icons/icon.svg',
   '/icons/icon-192.png',
   '/icons/icon-512.png'
 ];
 
-// Instalación del Service Worker y precacheo de recursos estáticos del App Shell
+// 1. Instalación del Service Worker: Descarga automática de todas las páginas HTML y recursos
 self.addEventListener('install', (event) => {
-  console.log('[ServiceWorker] Instalando nueva versión...');
+  console.log('[ServiceWorker] Instalando versión v3 con pre-cache de múltiples páginas...');
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      console.log('[ServiceWorker] Pre-cacheando recursos del App Shell');
+      console.log('[ServiceWorker] Pre-cacheando páginas HTML del sitio...');
       return cache.addAll(ASSETS_TO_CACHE);
     }).then(() => self.skipWaiting())
   );
 });
 
-// Activación y limpieza de cachés anteriores
+// 2. Activación y purga de cachés antiguas
 self.addEventListener('activate', (event) => {
-  console.log('[ServiceWorker] Activando y limpiando cachés antiguas...');
+  console.log('[ServiceWorker] Activando y limpiando cachés obsoletas...');
   event.waitUntil(
     caches.keys().then((keyList) => {
       return Promise.all(
         keyList.map((key) => {
           if (key !== CACHE_NAME) {
-            console.log('[ServiceWorker] Eliminando caché obsoleta:', key);
+            console.log('[ServiceWorker] Eliminando caché antigua:', key);
             return caches.delete(key);
           }
         })
@@ -40,43 +45,65 @@ self.addEventListener('activate', (event) => {
   );
 });
 
-// Intercepción de peticiones de red
+// 3. Intercepción inteligente de peticiones
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // Las peticiones a la API y llamadas internas de Livewire se delegan a la red.
-  // Su persistencia y gestión offline se realiza a nivel de aplicación con IndexedDB.
+  // Las llamadas API (/api/*) y Livewire se dejan a la red (IndexedDB maneja la persistencia)
   if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/livewire/')) {
     return;
   }
 
-  // Estrategia para navegación (cuando el usuario entra o refresca la página):
+  // ESTRATEGIA DE NAVEGACIÓN MULTI-PÁGINA (Clic en enlaces HTML)
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request).catch(() => {
-        console.log('[ServiceWorker] Sin conexión: Entregando App Shell desde caché');
-        return caches.match('/');
-      })
+      fetch(event.request)
+        .then((networkResponse) => {
+          // Si es la ruta /reportes-servidor, NO LA GUARDAMOS EN CACHÉ (es estrictamente solo online)
+          if (url.pathname === '/reportes-servidor') {
+            return networkResponse;
+          }
+
+          // Para las páginas permitidas, actualizamos la caché con la copia fresca del servidor
+          if (networkResponse && networkResponse.status === 200) {
+            const copy = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => cache.put(event.request, copy));
+          }
+          return networkResponse;
+        })
+        .catch(async () => {
+          console.log('[ServiceWorker] Modo Offline: Interceptando navegación a:', url.pathname);
+
+          // 1. Si la página solicitada está en caché (ej: '/', '/clientes', '/presupuestos/crear'), la entregamos de inmediato:
+          const cachedPage = await caches.match(event.request);
+          if (cachedPage) {
+            return cachedPage;
+          }
+
+          // 2. Si la página NO ESTÁ en caché (ej: '/reportes-servidor'), entregamos la pantalla de fallback amigable:
+          const fallback = await caches.match('/offline-fallback');
+          if (fallback) {
+            return fallback;
+          }
+
+          return caches.match('/');
+        })
     );
     return;
   }
 
-  // Estrategia Cache-First con actualización en segundo plano para recursos estáticos
+  // ESTRATEGIA PARA RECURSOS ESTÁTICOS (CSS, JS, Iconos): Cache First con revalidación
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
       if (cachedResponse) {
-        // En segundo plano intentamos actualizar la caché si hay red
         fetch(event.request).then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             caches.open(CACHE_NAME).then((cache) => cache.put(event.request, networkResponse));
           }
-        }).catch(() => {
-          // Sin conexión: no pasa nada, ya se entregó la versión en caché
-        });
+        }).catch(() => {});
         return cachedResponse;
       }
 
-      // Si no estaba en caché, pedirlo a la red
       return fetch(event.request).then((networkResponse) => {
         if (!networkResponse || networkResponse.status !== 200 || networkResponse.type !== 'basic') {
           return networkResponse;
