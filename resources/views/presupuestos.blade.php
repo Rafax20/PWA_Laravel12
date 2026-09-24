@@ -96,6 +96,9 @@
       </div>
 
       <div style="margin-left: auto; display: flex; gap: 10px; align-items: center;">
+        <button id="btn-install-pwa" class="btn btn-primary btn-install-pwa" onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="display: none; color: #fff !important; font-weight: 700;">
+          📲 Instalar App
+        </button>
         <input type="text" id="input-search" class="form-input" placeholder="🔍 Buscar cliente o correlativo..." style="width: 240px; padding: 6px 12px; font-size: 0.85rem;">
         <a href="/presupuestos/crear" class="btn btn-primary" style="color: #ffffff !important; font-weight: 700;">
           + Crear Nuevo

@@ -482,3 +482,48 @@ class SyncManager {
 
 // Exportación global para Vanilla JS
 window.SyncManager = SyncManager;
+
+// Registro global del Service Worker en todas las páginas de la PWA
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', async () => {
+    try {
+      const reg = await navigator.serviceWorker.register('/sw.js');
+      console.log('[PWA] Service Worker registrado globalmente con scope:', reg.scope);
+    } catch (err) {
+      console.warn('[PWA] Error al registrar Service Worker:', err);
+    }
+  });
+}
+
+// Soporte global para instalación como aplicación (PWA Install Prompt)
+let deferredPwaInstallPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPwaInstallPrompt = e;
+  document.querySelectorAll('.btn-install-pwa').forEach(btn => {
+    btn.style.display = 'inline-flex';
+  });
+  console.log('[PWA] La aplicación está lista para instalarse.');
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPwaInstallPrompt = null;
+  document.querySelectorAll('.btn-install-pwa').forEach(btn => {
+    btn.style.display = 'none';
+  });
+  console.log('[PWA] Aplicación instalada exitosamente en el sistema.');
+});
+
+window.triggerPwaInstall = async () => {
+  if (deferredPwaInstallPrompt) {
+    deferredPwaInstallPrompt.prompt();
+    const { outcome } = await deferredPwaInstallPrompt.userChoice;
+    console.log('[PWA] Elección del usuario para instalación:', outcome);
+    deferredPwaInstallPrompt = null;
+    document.querySelectorAll('.btn-install-pwa').forEach(btn => {
+      btn.style.display = 'none';
+    });
+  } else {
+    alert('Para instalar la aplicación, puedes pulsar el icono de instalación 🖥️ en la barra de direcciones de tu navegador (Chrome o Edge), o acceder al menú ⋮ -> "Guardar y compartir" -> "Instalar aplicación".');
+  }
+};

@@ -102,7 +102,11 @@
         ⚠ VER CONFLICTOS
       </button>
 
-      <button id="btn-reset-demo" class="btn btn-secondary" style="margin-left: auto;">
+      <button id="btn-install-pwa" class="btn btn-primary btn-install-pwa" onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="display: none; color: #fff !important; font-weight: 700; margin-left: auto;">
+        📲 Instalar App
+      </button>
+
+      <button id="btn-reset-demo" class="btn btn-secondary">
         ↺ Reiniciar Demo
       </button>
     </section>
