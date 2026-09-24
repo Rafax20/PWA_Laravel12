@@ -76,33 +76,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // 4.1 Soporte para instalación como aplicación (PWA Install Prompt)
-  let deferredPrompt = null;
-  const elBtnInstallPwa = document.getElementById('btn-install-pwa');
-
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    if (elBtnInstallPwa) {
-      elBtnInstallPwa.style.display = 'inline-flex';
-    }
+  window.addEventListener('beforeinstallprompt', () => {
     logActivity('PWA', 'La aplicación está lista para instalarse como PWA en Chrome / Edge.');
   });
 
-  if (elBtnInstallPwa) {
-    elBtnInstallPwa.addEventListener('click', async () => {
-      if (deferredPrompt) {
-        deferredPrompt.prompt();
-        const { outcome } = await deferredPrompt.userChoice;
-        logActivity('PWA', `Respuesta del usuario a la instalación: ${outcome}`);
-        deferredPrompt = null;
-        elBtnInstallPwa.style.display = 'none';
-      }
-    });
-  }
-
   window.addEventListener('appinstalled', () => {
     logActivity('PWA', '✓ Aplicación PWA instalada exitosamente.');
-    if (elBtnInstallPwa) elBtnInstallPwa.style.display = 'none';
+    document.querySelectorAll('.btn-install-pwa').forEach(b => b.style.display = 'none');
   });
 
   // 5. Función de Logging Educativo ("¿Qué está ocurriendo?")

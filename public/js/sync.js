@@ -497,6 +497,7 @@ if ('serviceWorker' in navigator) {
 
 // Soporte global para instalación como aplicación (PWA Install Prompt)
 let deferredPwaInstallPrompt = null;
+
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPwaInstallPrompt = e;
@@ -504,6 +505,16 @@ window.addEventListener('beforeinstallprompt', (e) => {
     btn.style.display = 'inline-flex';
   });
   console.log('[PWA] La aplicación está lista para instalarse.');
+});
+
+// Mostrar el botón de instalación si el usuario está en el navegador web (no instalada aún)
+document.addEventListener('DOMContentLoaded', () => {
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+  if (!isStandalone) {
+    document.querySelectorAll('.btn-install-pwa').forEach(btn => {
+      btn.style.display = 'inline-flex';
+    });
+  }
 });
 
 window.addEventListener('appinstalled', () => {
@@ -520,10 +531,12 @@ window.triggerPwaInstall = async () => {
     const { outcome } = await deferredPwaInstallPrompt.userChoice;
     console.log('[PWA] Elección del usuario para instalación:', outcome);
     deferredPwaInstallPrompt = null;
-    document.querySelectorAll('.btn-install-pwa').forEach(btn => {
-      btn.style.display = 'none';
-    });
+    if (outcome === 'accepted') {
+      document.querySelectorAll('.btn-install-pwa').forEach(btn => {
+        btn.style.display = 'none';
+      });
+    }
   } else {
-    alert('Para instalar la aplicación, puedes pulsar el icono de instalación 🖥️ en la barra de direcciones de tu navegador (Chrome o Edge), o acceder al menú ⋮ -> "Guardar y compartir" -> "Instalar aplicación".');
+    alert('Para instalar en Chrome / Edge:\n\n1. En el menú de Chrome arriba a la derecha (los 3 puntos ⋮)\n2. Haz clic en "Enviar, guardar y compartir"\n3. Selecciona "Instalar Sistema de Presupuestos PWA..." (o "Instalar página como aplicación").\n\n(También puedes recargar con F5 para que Chrome active el icono en la barra de direcciones).');
   }
 };

@@ -25,8 +25,8 @@
           PWA DEMO (Laravel 12)
         </h1>
         <div class="device-switcher">
-          <button id="btn-install-pwa" class="btn btn-sm btn-primary" style="display: none; margin-right: 6px;">
-            ⬇ Instalar App
+          <button id="btn-install-pwa-top" class="btn btn-sm btn-primary btn-install-pwa" onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="margin-right: 6px;">
+            📲 Instalar App
           </button>
           <span>Dispositivo actual:</span>
           <a id="link-device-a" href="/?device=A" class="device-link">Dispositivo A</a>
@@ -102,7 +102,7 @@
         ⚠ VER CONFLICTOS
       </button>
 
-      <button id="btn-install-pwa" class="btn btn-primary btn-install-pwa" onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="display: none; color: #fff !important; font-weight: 700; margin-left: auto;">
+      <button id="btn-install-pwa-main" class="btn btn-primary btn-install-pwa" onclick="window.triggerPwaInstall && window.triggerPwaInstall()" style="color: #fff !important; font-weight: 700; margin-left: auto;">
         📲 Instalar App
       </button>
 
