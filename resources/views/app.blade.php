@@ -1,13 +1,36 @@
+{{--
+  ==============================================================================
+  VISTA PRINCIPAL / LAYOUT PWA (resources/views/app.blade.php)
+  ==============================================================================
+  ¿QUÉ HACE ESTE ARCHIVO?
+  Sirve como vista principal de la PWA. En el <head> incluye las meta-etiquetas
+  obligatorias que le indican a Google Chrome, Edge y Safari en iOS que esta web
+  es una Progressive Web App instalable.
+  ==============================================================================
+--}}
 <!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  {{-- 1. Color de la barra de título / barra de estado en dispositivos móviles y Windows --}}
   <meta name="theme-color" content="#2563eb">
+  
   <meta name="description" content="PWA Offline Demo con Laravel 12, IndexedDB y resolución de conflictos">
+
+  {{-- 2. Vinculación obligatoria al Manifiesto de la PWA (nombre, iconos, modo standalone) --}}
   <link rel="manifest" href="/manifest.json">
+
+  {{-- 3. Iconos para navegadores estándar y dispositivos Apple (iOS / iPadOS) --}}
   <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="apple-touch-icon" href="/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+
+  {{-- 4. Compatibilidad con iOS para ocultar la barra del navegador cuando se añade a la pantalla de inicio --}}
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Presupuestos PWA">
+
   <title>PWA Offline & Sincronización - Laravel 12</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>

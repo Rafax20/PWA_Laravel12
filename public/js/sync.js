@@ -1,33 +1,55 @@
 /**
- * sync.js - Motor de sincronización, detección de red y resolución de conflictos
+ * ==============================================================================
+ * MOTOR DE SINCRONIZACIÓN OFFLINE-ONLINE E IDEMPOTENCIA (public/js/sync.js)
+ * ==============================================================================
+ * 
+ * ¿QUÉ HACE ESTE MOTOR?
+ * ------------------------------------------------------------------------------
+ * Este script es el corazón de la sincronización de la PWA:
+ * 1. Monitorea el estado de la conexión a internet (eventos 'online' y 'offline').
+ * 2. Realiza PULL (GET): Descarga catálogos desde Laravel y actualiza IndexedDB.
+ * 3. Realiza PUSH (POST): Envía operaciones encoladas cuando vuelve el internet.
+ * 4. Maneja IDEMPOTENCIA: Cada operación lleva un UUID único para evitar duplicados.
+ * 5. Detecta y resuelve CONFLICTOS de concurrencia optimista (versiones).
+ * 6. Gestiona la instalación de la PWA en el sistema operativo del usuario.
+ * ==============================================================================
  */
 
 class SyncManager {
+  /**
+   * @param {LocalDatabase} localDb - Instancia de IndexedDB (db.js)
+   * @param {Function} onStateChange - Callback para refrescar la interfaz gráfica
+   * @param {Function} onLog - Callback para registrar eventos educativos en la consola de la UI
+   */
   constructor(localDb, onStateChange, onLog) {
     this.db = localDb;
     this.onStateChange = onStateChange || (() => {});
     this.onLog = onLog || (() => {});
 
-    // Estado de red simulada persistido por dispositivo en localStorage
+    // Estado de simulación offline persistido por dispositivo en localStorage
     this.storageKey = `pwa_simulated_offline_${this.db.clientId}`;
     this.simulatedOffline = localStorage.getItem(this.storageKey) === 'true';
     this.isSyncing = false;
 
-    // Escuchadores de eventos de red del navegador
+    // --------------------------------------------------------------------------
+    // DETECCIÓN NATIVA DE RED DEL NAVEGADOR
+    // --------------------------------------------------------------------------
+    // Evento 'online': Se dispara cuando el dispositivo recupera conexión Wi-Fi/4G real
     window.addEventListener('online', async () => {
-      this.onLog('Red', 'El navegador detectó conexión a Internet real. Sincronizando automáticamente todas las tablas con Laravel...');
+      this.onLog('Red', 'El navegador detectó conexión a Internet real. Sincronizando automáticamente con Laravel...');
       if (!this.simulatedOffline) {
         this.onStateChange();
         await this.autoSync();
       }
     });
 
+    // Evento 'offline': Se dispara cuando el dispositivo pierde conexión física
     window.addEventListener('offline', () => {
-      this.onLog('Red', 'El navegador perdió la conexión a Internet real.');
+      this.onLog('Red', 'El navegador perdió la conexión a Internet real. Modo Offline activado.');
       this.onStateChange();
     });
 
-    // Sincronizar el estado offline si otra pestaña del mismo dispositivo lo modifica
+    // Sincronizar el estado offline si el usuario lo cambia en otra pestaña del mismo dispositivo
     window.addEventListener('storage', (e) => {
       if (e.key === this.storageKey) {
         this.simulatedOffline = e.newValue === 'true';
@@ -37,30 +59,30 @@ class SyncManager {
   }
 
   /**
-   * Indica si la aplicación tiene conectividad activa (considerando la simulación)
+   * Retorna true si el navegador tiene internet Y no está activada la simulación offline
    */
   isOnline() {
     return navigator.onLine && !this.simulatedOffline;
   }
 
   /**
-   * Conmuta la simulación de corte de red offline persistida en localStorage
+   * Conmuta la simulación de corte de red (para pruebas en desarrollo)
    */
   async toggleOfflineSimulation() {
     this.simulatedOffline = !this.simulatedOffline;
     localStorage.setItem(this.storageKey, this.simulatedOffline ? 'true' : 'false');
 
     if (this.simulatedOffline) {
-      this.onLog('Simulación', `MODO OFFLINE ACTIVADO (Dispositivo ${this.db.clientId}). Las peticiones al servidor quedan bloqueadas y el estado persiste entre páginas.`, {
+      this.onLog('Simulación', `MODO OFFLINE ACTIVADO (Dispositivo ${this.db.clientId}). Las peticiones de red quedan bloqueadas.`, {
         estado: 'OFFLINE_SIMULADO',
         dispositivo: this.db.clientId
       });
     } else {
-      this.onLog('Simulación', `MODO OFFLINE DESACTIVADO (Dispositivo ${this.db.clientId}). La conexión al servidor fue restablecida. Sincronizando todas las tablas...`, {
+      this.onLog('Simulación', `MODO OFFLINE DESACTIVADO (Dispositivo ${this.db.clientId}). Conexión restablecida. Sincronizando...`, {
         estado: 'ONLINE',
         dispositivo: this.db.clientId
       });
-      // Al volver la conexión, disparamos sincronización automática (push pendientes + pull tablas completas)
+      // Al volver online, disparamos sincronización automática (push pendientes + pull tablas)
       await this.autoSync();
     }
     this.onStateChange();
@@ -68,11 +90,19 @@ class SyncManager {
   }
 
   /**
-   * Descarga la lista más reciente de productos, clientes y presupuestos desde Laravel y actualiza IndexedDB
+   * ============================================================================
+   * MÉTODO PULL (Descarga de Datos desde Laravel -> IndexedDB)
+   * ============================================================================
+   * Consulta los endpoints de lectura en Laravel:
+   * - GET /api/products     -> Catálogo oficial de productos
+   * - GET /api/clients      -> Directorio de clientes
+   * - GET /api/presupuestos -> Presupuestos registrados
+   * 
+   * Si no hay internet, lee silenciosamente desde IndexedDB sin arrojar error.
    */
   async pull() {
     if (!this.isOnline()) {
-      this.onLog('IndexedDB', 'Dispositivo OFFLINE: No es posible consultar el servidor Laravel. Los datos se cargan exclusivamente desde la base local IndexedDB.');
+      this.onLog('IndexedDB', 'Dispositivo OFFLINE: Los datos se cargan exclusivamente desde la base local IndexedDB.');
       return {
         products: await this.db.getAllProducts(),
         presupuestos: await this.db.getAllPresupuestos(),
@@ -81,42 +111,42 @@ class SyncManager {
     }
 
     try {
-      this.onLog('Laravel API', 'Consultando GET /api/products, GET /api/presupuestos y GET /api/clients para sincronizar el estado oficial...');
+      this.onLog('Laravel API', 'Consultando GET /api/products, GET /api/presupuestos y GET /api/clients...');
 
-      // Consultar en paralelo las 3 APIs para máxima velocidad de respuesta:
+      // Consultamos en paralelo las 3 APIs para máxima velocidad de respuesta:
       const [prodFetch, clientFetch, presFetch] = await Promise.allSettled([
         fetch('/api/products', { headers: { 'Accept': 'application/json' } }),
         fetch('/api/clients', { headers: { 'Accept': 'application/json' } }),
         fetch('/api/presupuestos', { headers: { 'Accept': 'application/json' } })
       ]);
 
-      // 1. Procesar Productos
+      // 1. Guardar Productos en IndexedDB
       if (prodFetch.status === 'fulfilled' && prodFetch.value.ok) {
         try {
           const prodData = await prodFetch.value.json();
           if (prodData.products && Array.isArray(prodData.products)) {
             await this.db.saveProducts(prodData.products);
-            this.onLog('IndexedDB', `✓ Copia local de catálogo actualizada: ${prodData.products.length} productos sincronizados con Laravel.`);
+            this.onLog('IndexedDB', `✓ Catálogo actualizado: ${prodData.products.length} productos sincronizados.`);
           }
         } catch (errProd) {
           console.warn('[SyncManager] Error al parsear productos:', errProd);
         }
       }
 
-      // 2. Procesar Directorio de Clientes
+      // 2. Guardar Clientes en IndexedDB
       if (clientFetch.status === 'fulfilled' && clientFetch.value.ok) {
         try {
           const clientData = await clientFetch.value.json();
           if (clientData.clients && Array.isArray(clientData.clients)) {
             await this.db.saveClients(clientData.clients);
-            this.onLog('IndexedDB', `✓ Directorio de clientes actualizado: ${clientData.clients.length} clientes sincronizados con Laravel.`);
+            this.onLog('IndexedDB', `✓ Directorio de clientes actualizado: ${clientData.clients.length} clientes sincronizados.`);
           }
         } catch (errClient) {
           console.warn('[SyncManager] Error al parsear clientes:', errClient);
         }
       }
 
-      // 3. Procesar Presupuestos oficiales del servidor
+      // 3. Fusionar Presupuestos oficiales del servidor con los locales
       if (presFetch.status === 'fulfilled' && presFetch.value.ok) {
         try {
           const presData = await presFetch.value.json();
@@ -167,11 +197,11 @@ class SyncManager {
             }
 
             if (newSyncedCount > 0 || updatedCount > 0) {
-              this.onLog('IndexedDB', `✓ Presupuestos sincronizados con Laravel: ${newSyncedCount} nuevo(s) descargados, ${updatedCount} actualizados.`);
+              this.onLog('IndexedDB', `✓ Presupuestos sincronizados: ${newSyncedCount} nuevo(s) descargados, ${updatedCount} actualizados.`);
             }
           }
         } catch (errPres) {
-          console.warn('[SyncManager] Error al sincronizar presupuestos del servidor:', errPres);
+          console.warn('[SyncManager] Error al sincronizar presupuestos:', errPres);
         }
       }
 
@@ -181,7 +211,7 @@ class SyncManager {
         clients: await this.db.getAllClients()
       };
     } catch (err) {
-      this.onLog('Red', `Fallo al conectar con Laravel (${err.message}). Cargando desde IndexedDB.`);
+      this.onLog('Red', `Fallo al conectar con Laravel (${err.message}). Cargando desde IndexedDB local.`);
       return {
         products: await this.db.getAllProducts(),
         presupuestos: await this.db.getAllPresupuestos(),
@@ -191,7 +221,14 @@ class SyncManager {
   }
 
   /**
-   * Envía a Laravel todas las operaciones pendientes guardadas en la cola local
+   * ============================================================================
+   * MÉTODO PUSH (Envío de Operaciones Encoladas -> Laravel)
+   * ============================================================================
+   * Envía por POST a '/api/sync/push' todas las operaciones pendientes en 'sync_queue'.
+   * 
+   * Cada operación incluye:
+   * - operation_id: UUID único para garantizar IDEMPOTENCIA.
+   * - base_version: Versión que tenía el registro al ser editado (para detectar conflictos).
    */
   async push() {
     if (this.isSyncing) return;
@@ -210,22 +247,15 @@ class SyncManager {
       }
 
       if (!this.isOnline()) {
-        this.onLog('Offline', `Existen ${pendingOps.length} cambio(s) pendientes pero el dispositivo está OFFLINE. Los cambios permanecen resguardados en IndexedDB.`);
+        this.onLog('Offline', `Existen ${pendingOps.length} cambio(s) pendientes pero no hay red. Los datos están seguros en IndexedDB.`);
         this.isSyncing = false;
         this.onStateChange();
         return;
       }
 
-      this.onLog('Laravel API', `Enviando POST /api/sync/push con ${pendingOps.length} operación(es) pendiente(s)...`, {
-        dispositivo: this.db.clientId,
-        operaciones: pendingOps.map(o => ({
-          id: o.operation_id,
-          entidad: o.entity || 'products',
-          registro_id: o.record_id,
-          tipo: o.operation_type
-        }))
-      });
+      this.onLog('Laravel API', `Enviando POST /api/sync/push con ${pendingOps.length} operación(es)...`);
 
+      // LLAMADA HTTP A LARAVEL:
       const response = await fetch('/api/sync/push', {
         method: 'POST',
         headers: {
@@ -242,13 +272,13 @@ class SyncManager {
       const data = await response.json();
       const results = data.results || [];
 
+      // Procesamos cada resultado devuelto por Laravel
       for (const res of results) {
+        // CASO 1: Operación aceptada y procesada con éxito
         if (res.status === 'SUCCESS') {
-          // 1. Operación aceptada por el servidor
           await this.db.removeOperation(res.operation_id);
 
           if (res.entity === 'presupuestos' || res.presupuesto) {
-            // Actualizar presupuesto local en IndexedDB con el nuevo correlativo oficial y versión
             const localBudgets = await this.db.getAllPresupuestos();
             const localB = localBudgets.find(b =>
               b.local_id === res.operation_id ||
@@ -273,55 +303,19 @@ class SyncManager {
               await this.db.savePresupuesto(localB);
             }
 
-            if (res.operation_type === 'update_budget') {
-              this.onLog('Laravel API', `✓ Presupuesto ${res.official_correlativo} editado en Laravel (Nueva versión: ${res.presupuesto ? res.presupuesto.version : 2}, Operation ID: ${res.operation_id.slice(0, 8)}...).`, {
-                operacion_id: res.operation_id,
-                correlativo: res.official_correlativo,
-                version: res.presupuesto ? res.presupuesto.version : 2,
-                total: res.presupuesto ? `$${Number(res.presupuesto.total).toFixed(2)}` : null
-              });
-            } else {
-              this.onLog('Laravel API', `✓ Presupuesto sincronizado: Correlativo ${res.temp_correlativo || ''} reemplazado por correlativo oficial ${res.official_correlativo}.`, {
-                operacion_id: res.operation_id,
-                correlativo_oficial: res.official_correlativo,
-                cliente: res.presupuesto ? res.presupuesto.client_name : null,
-                total: res.presupuesto ? `$${Number(res.presupuesto.total).toFixed(2)}` : null
-              });
-            }
+            this.onLog('Laravel API', `✓ Presupuesto sincronizado: Asignado correlativo oficial ${res.official_correlativo}.`);
           } else if (res.product) {
             await this.db.updateProduct(res.product);
-            this.onLog('Laravel API', `✓ Operación ${res.operation_id.slice(0, 8)}... ACEPTADA por Laravel. Producto ${res.product.name} actualizado a versión ${res.product.version}.`, {
-              operacion_id: res.operation_id,
-              nueva_version: res.product.version,
-              nuevo_precio: res.product.price
-            });
+            this.onLog('Laravel API', `✓ Producto ${res.product.name} actualizado a versión ${res.product.version}.`);
           }
         }
+        // CASO 2: IDEMPOTENCIA DETECTADA (La operación ya había sido procesada)
         else if (res.status === 'ALREADY_PROCESSED') {
-          // 2. Idempotencia: Laravel ya había procesado este operation_id
           await this.db.removeOperation(res.operation_id);
-
-          if (res.entity === 'presupuestos' || res.official_correlativo) {
-            const localBudgets = await this.db.getAllPresupuestos();
-            const localB = localBudgets.find(b =>
-              b.local_id === res.operation_id ||
-              b.correlativo === res.temp_correlativo ||
-              b.correlativo === res.official_correlativo
-            );
-
-            if (localB) {
-              if (res.official_correlativo) localB.correlativo = res.official_correlativo;
-              localB.status = 'sincronizado';
-              await this.db.savePresupuesto(localB);
-            }
-
-            this.onLog('Idempotencia', `ℹ IDEMPOTENCIA: El presupuesto ${res.official_correlativo || res.temp_correlativo} ya estaba registrado en Laravel. No se crearon duplicados.`);
-          } else {
-            this.onLog('Idempotencia', `ℹ IDEMPOTENCIA: Laravel detectó que la operación ${res.operation_id.slice(0, 8)}... ya había sido procesada anteriormente. No se aplicaron cambios duplicados.`);
-          }
+          this.onLog('Idempotencia', `ℹ IDEMPOTENCIA: La operación ${res.operation_id.slice(0, 8)}... ya estaba procesada. No se duplicaron datos.`);
         }
+        // CASO 3: CONFLICTO DE CONCURRENCIA (Alguien modificó el registro mientras estabas offline)
         else if (res.status === 'CONFLICT') {
-          // 3. Conflicto: La versión del servidor cambió mientras este dispositivo estaba offline
           const conflictData = {
             operation_id: res.operation_id,
             client_id: res.client_id,
@@ -341,10 +335,7 @@ class SyncManager {
             await this.db.updateOperation(op);
           }
 
-          this.onLog('Conflicto', `⚠ ¡CONFLICTO DETECTADO EN LARAVEL! El servidor tiene versión ${res.server_version} pero el dispositivo ${res.client_id} envió base_version ${res.base_version}. Laravel rechazó la sobreescritura automática.`, {
-            servidor: res.server_data,
-            cambio_dispositivo: res.device_payload
-          });
+          this.onLog('Conflicto', `⚠ CONFLICTO: El servidor tiene versión ${res.server_version} pero el dispositivo envió versión ${res.base_version}.`);
         }
       }
 
@@ -357,7 +348,7 @@ class SyncManager {
   }
 
   /**
-   * Sincronización automática silenciosa
+   * Sincronización automática silenciosa (Push + Pull)
    */
   async autoSync() {
     if (this.isOnline()) {
@@ -368,9 +359,9 @@ class SyncManager {
   }
 
   /**
-   * Resuelve un conflicto específico según la elección del usuario
-   * @param {string} operationId 
-   * @param {'keep_server' | 'use_device'} resolution 
+   * Resuelve un conflicto específico según la decisión del usuario
+   * @param {string} operationId - UUID de la operación
+   * @param {'keep_server' | 'use_device'} resolution - Decisión tomada
    */
   async resolveConflict(operationId, resolution) {
     const conflicts = await this.db.getConflicts();
@@ -385,16 +376,16 @@ class SyncManager {
         await this.db.updateProduct(conflict.server_data);
       }
 
-      this.onLog('Resolución', `Resolución de conflicto: Se eligió [CONSERVAR SERVIDOR]. Se descartó el cambio local del Dispositivo ${this.db.clientId} y se adoptó el precio de $${conflict.server_data.price} (versión ${conflict.server_data.version}).`);
+      this.onLog('Resolución', `Resolución: Se conservaron los datos del servidor (versión ${conflict.server_data.version}).`);
       this.onStateChange();
     } 
     else if (resolution === 'use_device') {
       if (!this.isOnline()) {
-        alert('Debe tener conexión activa para forzar la sincronización del cambio.');
+        alert('Debe tener conexión activa para enviar la resolución al servidor.');
         return;
       }
 
-      this.onLog('Resolución', `Resolución de conflicto: Se eligió [USAR CAMBIO DEL DISPOSITIVO]. Enviando solicitud forzada a Laravel para sobrescribir con el precio de $${conflict.device_payload.price}...`);
+      this.onLog('Resolución', 'Resolución: Forzando actualización con los datos del dispositivo...');
 
       const forceOperation = {
         operation_id: crypto.randomUUID(),
@@ -421,11 +412,10 @@ class SyncManager {
           await this.db.removeOperation(operationId);
           await this.db.removeConflict(operationId);
           await this.db.updateProduct(res.product);
-
-          this.onLog('Resolución', `✓ Conflicto resuelto: Laravel aceptó el cambio forzado. El nuevo precio oficial es $${res.product.price} y la nueva versión es ${res.product.version}.`);
+          this.onLog('Resolución', `✓ Conflicto resuelto: El servidor adoptó el cambio forzado.`);
         }
       } catch (err) {
-        this.onLog('Error', `Error al forzar resolución: ${err.message}`);
+        this.onLog('Error', `Error al resolver conflicto: ${err.message}`);
       }
 
       this.onStateChange();
@@ -433,26 +423,23 @@ class SyncManager {
   }
 
   /**
-   * Simula el reenvío de una operación ya procesada para verificar idempotencia
+   * Reenvía intencionalmente una operación procesada para demostrar idempotencia
    */
   async testIdempotency(operationId, recordId, payload, entity = 'products') {
     if (!this.isOnline()) {
-      alert('Conecte el dispositivo para probar la idempotencia con Laravel.');
+      alert('Active la conexión para probar la idempotencia con Laravel.');
       return;
     }
 
-    const isBudget = entity === 'presupuestos' || (payload && payload.correlativo);
-    const label = isBudget ? `Presupuesto (${payload.correlativo || recordId})` : `Producto ID ${recordId}`;
-
-    this.onLog('Idempotencia', `[PRUEBA DE IDEMPOTENCIA]: Reenviando a propósito la operación ${operationId.slice(0, 8)}... (${label}) para comprobar que Laravel la rechaza como duplicada.`);
+    this.onLog('Idempotencia', `[PRUEBA]: Reenviando operación duplicada ${operationId.slice(0, 8)}... a Laravel.`);
 
     try {
       const operationData = {
         operation_id: operationId,
         client_id: this.db.clientId,
-        entity: isBudget ? 'presupuestos' : 'products',
+        entity: entity,
         record_id: recordId,
-        operation_type: isBudget ? 'create_budget' : 'update',
+        operation_type: entity === 'presupuestos' ? 'create_budget' : 'update',
         payload: payload,
         base_version: 1
       };
@@ -460,19 +447,15 @@ class SyncManager {
       const response = await fetch('/api/sync/push', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-        body: JSON.stringify({
-          operations: [operationData]
-        })
+        body: JSON.stringify({ operations: [operationData] })
       });
 
       const data = await response.json();
       const res = (data.results || [])[0];
       if (res && res.status === 'ALREADY_PROCESSED') {
-        this.onLog('Idempotencia', `✓ RESULTADO EXITOSO DE IDEMPOTENCIA: Laravel respondió "${res.message}". La base de datos no fue modificada ni duplicada.`);
-      } else if (res && res.status === 'SUCCESS') {
-        this.onLog('Idempotencia', `ℹ Operación procesada por primera vez: ${res.message}`);
+        this.onLog('Idempotencia', `✓ RESULTADO EXITOSO: Laravel detectó duplicado y respondió: "${res.message}". Base de datos intacta.`);
       } else {
-        this.onLog('Idempotencia', `Respuesta del servidor: ${res ? res.message : 'Sin respuesta'}`);
+        this.onLog('Idempotencia', `Respuesta del servidor: ${res ? res.message : 'OK'}`);
       }
     } catch (e) {
       this.onLog('Error', `Error en prueba de idempotencia: ${e.message}`);
@@ -480,34 +463,39 @@ class SyncManager {
   }
 }
 
-// Exportación global para Vanilla JS
+// Exportamos SyncManager globalmente
 window.SyncManager = SyncManager;
 
-// Registro global del Service Worker en todas las páginas de la PWA
+// ==============================================================================
+// REGISTRO GLOBAL DEL SERVICE WORKER
+// ==============================================================================
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', async () => {
     try {
       const reg = await navigator.serviceWorker.register('/sw.js');
-      console.log('[PWA] Service Worker registrado globalmente con scope:', reg.scope);
+      console.log('[PWA] Service Worker registrado. Scope:', reg.scope);
     } catch (err) {
       console.warn('[PWA] Error al registrar Service Worker:', err);
     }
   });
 }
 
-// Soporte global para instalación como aplicación (PWA Install Prompt)
+// ==============================================================================
+// CAPTURADOR DE INSTALACIÓN PWA (beforeinstallprompt)
+// ==============================================================================
 let deferredPwaInstallPrompt = null;
 
 window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
+  e.preventDefault(); // Evitamos diálogo invasivo automático
   deferredPwaInstallPrompt = e;
+  // Hacemos visibles todos los botones con clase .btn-install-pwa
   document.querySelectorAll('.btn-install-pwa').forEach(btn => {
     btn.style.display = 'inline-flex';
   });
-  console.log('[PWA] La aplicación está lista para instalarse.');
+  console.log('[PWA] Aplicación lista para instalar.');
 });
 
-// Mostrar el botón de instalación si el usuario está en el navegador web (no instalada aún)
+// Mostrar botón si estamos en un navegador convencional (no standalone)
 document.addEventListener('DOMContentLoaded', () => {
   const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
   if (!isStandalone) {
@@ -525,11 +513,13 @@ window.addEventListener('appinstalled', () => {
   console.log('[PWA] Aplicación instalada exitosamente en el sistema.');
 });
 
+/**
+ * Función disparada al hacer clic en cualquier botón de instalación
+ */
 window.triggerPwaInstall = async () => {
   if (deferredPwaInstallPrompt) {
     deferredPwaInstallPrompt.prompt();
     const { outcome } = await deferredPwaInstallPrompt.userChoice;
-    console.log('[PWA] Elección del usuario para instalación:', outcome);
     deferredPwaInstallPrompt = null;
     if (outcome === 'accepted') {
       document.querySelectorAll('.btn-install-pwa').forEach(btn => {
@@ -537,6 +527,6 @@ window.triggerPwaInstall = async () => {
       });
     }
   } else {
-    alert('Para instalar en Chrome / Edge:\n\n1. En el menú de Chrome arriba a la derecha (los 3 puntos ⋮)\n2. Haz clic en "Enviar, guardar y compartir"\n3. Selecciona "Instalar Sistema de Presupuestos PWA..." (o "Instalar página como aplicación").\n\n(También puedes recargar con F5 para que Chrome active el icono en la barra de direcciones).');
+    alert('Para instalar en Chrome / Edge:\n\n1. En el menú de Chrome arriba a la derecha (⋮)\n2. Haz clic en "Enviar, guardar y compartir"\n3. Selecciona "Instalar página como aplicación".');
   }
 };

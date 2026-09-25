@@ -1,3 +1,16 @@
+{{--
+  ==============================================================================
+  VISTA DE RESPALDO OFFLINE (resources/views/offline_fallback.blade.php)
+  ==============================================================================
+  ¿QUÉ HACE ESTA VISTA?
+  El Service Worker (public/sw.js) entrega esta página cuando un usuario intenta
+  navegar a una URL que NO fue guardada en caché y el dispositivo NO tiene internet.
+  
+  Evita que Chrome muestre el clásico dinosaurio de "No hay conexión a internet"
+  y ofrece una experiencia de usuario profesional con botones para volver a las
+  secciones que SÍ están disponibles offline.
+  ==============================================================================
+--}}
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -47,6 +60,7 @@
 
   </div>
 
+  {{-- Script para preservar el identificador ?device=A/B en los enlaces de retorno --}}
   <script>
     document.addEventListener('DOMContentLoaded', () => {
       const urlParams = new URLSearchParams(window.location.search);
