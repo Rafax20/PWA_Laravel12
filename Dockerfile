@@ -40,6 +40,7 @@ RUN echo '<VirtualHost *:80>\n\
     CustomLog ${APACHE_LOG_DIR}/access.log combined\n\
 </VirtualHost>' > /etc/apache2/sites-available/000-default.conf \
     && echo "ServerName localhost" >> /etc/apache2/apache2.conf \
+    && sed -i 's|Alias /icons/|# Alias /icons/|g' /etc/apache2/mods-available/alias.conf /etc/apache2/mods-enabled/alias.conf 2>/dev/null || true \
     && a2enmod rewrite headers
 
 # Copy application files (excluding those in .dockerignore)

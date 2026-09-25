@@ -17,7 +17,7 @@
 // 1. NOMBRE DE LA CACHÉ
 // REGLA DE ORO EN PRODUCCIÓN: Si actualizas estilos CSS, vistas Blade o JS, incrementa esta versión
 // (ej. 'presupuestos-pwa-v9'). Eso forzará al navegador a descargar los nuevos archivos y purgar los viejos.
-const CACHE_NAME = 'presupuestos-pwa-v8';
+const CACHE_NAME = 'presupuestos-pwa-v9';
 
 // 2. LISTA DE RECURSOS PRE-CACHEADOS (Descarga inicial obligatoria)
 // Todos estos recursos se descargarán y guardarán en el almacenamiento local del dispositivo
@@ -33,9 +33,9 @@ const ASSETS_TO_CACHE = [
   '/js/db.js?v=8',         // Motor IndexedDB local del cliente
   '/js/sync.js?v=8',       // Motor de sincronización, colas e idempotencia
   '/js/app.js?v=8',        // Lógica de interfaz de usuario
-  '/icons/icon.svg',       // Icono vectorial
-  '/icons/icon-192.png',   // Icono estándar (192x192 px)
-  '/icons/icon-512.png'    // Icono de alta resolución (512x512 px)
+  '/pwa-icons/icon.svg',       // Icono vectorial
+  '/pwa-icons/icon-192.png',   // Icono estándar (192x192 px)
+  '/pwa-icons/icon-512.png'    // Icono de alta resolución (512x512 px)
 ];
 
 /**

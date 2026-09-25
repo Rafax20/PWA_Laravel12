@@ -23,11 +23,11 @@
   <link rel="manifest" href="/manifest.json">
 
   {{-- 3. Iconos PNG requeridos por Windows y Chrome para crear el acceso directo --}}
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
-  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="shortcut icon" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/pwa-icons/icon-512.png">
+  <link rel="icon" type="image/svg+xml" href="/pwa-icons/icon.svg">
+  <link rel="shortcut icon" href="/pwa-icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/pwa-icons/icon-192.png">
 
   {{-- 4. Compatibilidad con iOS para ocultar la barra del navegador cuando se añade a la pantalla de inicio --}}
   <meta name="apple-mobile-web-app-capable" content="yes">

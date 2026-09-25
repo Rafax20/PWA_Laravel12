@@ -5,11 +5,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#2563eb">
   <link rel="manifest" href="/manifest.json">
-  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
-  <link rel="icon" type="image/png" sizes="512x512" href="/icons/icon-512.png">
-  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
-  <link rel="shortcut icon" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="/pwa-icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="/pwa-icons/icon-512.png">
+  <link rel="icon" type="image/svg+xml" href="/pwa-icons/icon.svg">
+  <link rel="shortcut icon" href="/pwa-icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/pwa-icons/icon-192.png">
   <title>Clientes - Sistema de Presupuestos PWA</title>
   <link rel="stylesheet" href="/css/app.css">
 </head>
